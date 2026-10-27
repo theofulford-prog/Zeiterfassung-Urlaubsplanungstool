@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+/*
+ * Gestaltung nach den Apple Human Interface Guidelines:
+ * - Systemschrift (SF), semantische Grautöne nach Apple-Vorbild, Kontrast ≥ 4,5:1 für Text
+ * - Dark Mode folgt der Systemeinstellung (keine eigene App-Einstellung)
+ * - Touch-Ziele ≥ 44 pt, sichtbarer Tastaturfokus, "Bewegung reduzieren" wird respektiert
+ */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Inter", "Segoe UI", system-ui, sans-serif;
+
+  /* Graustufen angelehnt an Apples System-Grays (Light). Die Stufen 400/500 sind für Text auf Weiß ≥ 4,5:1. */
+  --color-slate-50: #f2f2f7;
+  --color-slate-100: #e9e9ee;
+  --color-slate-200: #d8d8dd;
+  --color-slate-300: #c7c7cc;
+  --color-slate-400: #76767b;
+  --color-slate-500: #636366;
+  --color-slate-600: #48484a;
+  --color-slate-700: #3a3a3c;
+  --color-slate-800: #1c1c1e;
+  --color-slate-900: #000000;
+
+  --color-brand-50: #eaf6f7;
+  --color-brand-100: #cdebee;
+  --color-brand-200: #9fd6dc;
+  --color-brand-500: #13808b;
+  --color-brand-600: #0e6c76;
+  --color-brand-700: #0b5860;
+
+  /* Text auf Akzent-/Statusflächen (bleibt in beiden Modi hell) */
+  --color-onaccent: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    /* Apple Dark: Hintergrund schwarz, Gruppen/Karten #1c1c1e, Trennlinien #38383a */
+    --color-white: #1c1c1e;
+    --color-slate-50: #000000;
+    --color-slate-100: #2c2c2e;
+    --color-slate-200: #38383a;
+    --color-slate-300: #48484a;
+    --color-slate-400: #98989d;
+    --color-slate-500: #aeaeb2;
+    --color-slate-600: #c7c7cc;
+    --color-slate-700: #d1d1d6;
+    --color-slate-800: #f2f2f7;
+    --color-slate-900: #ffffff;
+
+    --color-brand-50: #0f2a2d;
+    --color-brand-100: #12393d;
+    --color-brand-200: #1b5258;
+    --color-brand-500: #2fb4c0;
+    --color-brand-600: #12808b;
+    --color-brand-700: #6fd3dc;
+
+    /* Statusfarben: Apple System Colors (Dark) für Flächen, aufgehellte Töne für Text */
+    --color-sky-50: #0b2238;
+    --color-sky-100: #0e2d4a;
+    --color-sky-200: #164673;
+    --color-sky-400: #3aa0ff;
+    --color-sky-500: #0091ff;
+    --color-sky-600: #4fb0ff;
+    --color-sky-700: #8cc9ff;
+    --color-sky-900: #b8ddff;
+    --color-sky-950: #d6ecff;
+
+    --color-emerald-50: #0e2615;
+    --color-emerald-500: #30d158;
+    --color-emerald-600: #4cd96f;
+    --color-emerald-700: #7be495;
+
+    --color-amber-50: #2e1f08;
+    --color-amber-200: #5a3b0c;
+    --color-amber-300: #7a5212;
+    --color-amber-500: #ff9230;
+    --color-amber-600: #ffa65a;
+    --color-amber-700: #ffbd80;
+    --color-amber-900: #ffd9b3;
+
+    --color-red-50: #33100f;
+    --color-red-500: #ff4245;
+    --color-red-600: #ff6b6d;
+    --color-red-700: #ff9a9c;
+
+    --color-rose-50: #331018;
+    --color-rose-100: #47162a;
+    --color-rose-400: #ff375f;
+    --color-rose-900: #ffb3c4;
+    --color-rose-950: #ffd1dc;
+
+    --color-violet-50: #1d1b3d;
+    --color-violet-100: #272452;
+    --color-violet-400: #6d7cff;
+    --color-violet-900: #c4caff;
+    --color-violet-950: #dde1ff;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+  font-feature-settings: "tnum" 0;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-brand-500) 60%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@utility card {
+  @apply rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)];
+}
+@utility input {
+  @apply w-full rounded-[10px] border border-slate-300 bg-white px-3 py-2 text-[15px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 disabled:bg-slate-50 disabled:text-slate-400;
+  /* iOS zoomt bei Eingabefeldern unter 16 px – auf Touch-Geräten daher 16 px und 44 pt Höhe */
+  @media (pointer: coarse) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+@utility label {
+  @apply mb-1 block text-[13px] font-medium text-slate-500;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[15px] font-medium whitespace-nowrap transition select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
+}
+/* Prominent: höchstens 1–2 pro Ansicht (HIG Buttons) */
+@utility btn-primary {
+  @apply btn bg-brand-600 text-onaccent hover:brightness-110 active:brightness-95;
+}
+/* Getönt: für wiederkehrende Aktionen in Listen */
+@utility btn-tinted {
+  @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100;
+}
+@utility btn-secondary {
+  @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50;
+}
+@utility btn-ghost {
+  @apply btn text-brand-700 hover:bg-brand-50;
+}
+@utility btn-danger {
+  @apply btn text-red-600 hover:bg-red-50;
+}
+@utility data-table {
+  @apply w-full text-[15px];
+  & th {
+    @apply border-b border-slate-200 px-3 py-2 text-left text-[12px] font-semibold text-slate-500;
+  }
+  & td {
+    @apply border-b border-slate-100 px-3 py-2.5;
+  }
+  & tr:last-child td {
+    @apply border-b-0;
+  }
+}
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+}
