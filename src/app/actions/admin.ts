@@ -5,10 +5,11 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { isValidISO, todayISO } from "@/lib/dates";
-import { dropLeavesAfterExit } from "@/lib/exits";
+import { todayISO } from "@/lib/dates";
 import { requirePermission } from "@/lib/auth";
 import { assignableRoles, can, canManageUser, normalizeRole, ROLE_INFO } from "@/lib/permissions";
+import { audit } from "@/lib/audit";
+import { diffChanges } from "@/lib/audit-diff";
 import type { FormState } from "./auth";
 
 function num(v: FormDataEntryValue | null): number | null {
@@ -24,35 +25,18 @@ export async function saveUser(_: FormState, form: FormData): Promise<FormState>
   const name = String(form.get("name") ?? "").trim();
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const role = normalizeRole(String(form.get("role") ?? "EMPLOYEE"));
-  // Kostensatz nur übernehmen, wenn die handelnde Person Kosten sehen darf und das Feld mitgeschickt wurde.
-  const hourlyCostInput = can(actor.role, "costs.view") && form.has("hourlyCost") ? num(form.get("hourlyCost")) ?? 0 : null;
-  const weeklyHours = num(form.get("weeklyHours")) ?? 40;
-  const vacationDaysPerYear = num(form.get("vacationDaysPerYear")) ?? 30;
   const active = form.get("active") !== "off";
   const tracksTime = form.get("tracksTime") !== "off";
-  const entryDate = String(form.get("entryDate") ?? "").trim() || null;
-  const exitDate = String(form.get("exitDate") ?? "").trim() || null;
   const password = String(form.get("password") ?? "");
-  const carryoverDays = num(form.get("carryoverDays")) ?? 0;
-  const carryoverYear = num(form.get("carryoverYear"));
 
   if (!name) return { error: "Bitte einen Namen angeben." };
   if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Bitte eine gültige E-Mail-Adresse angeben." };
-  if ([hourlyCostInput ?? 0, weeklyHours, vacationDaysPerYear, carryoverDays].some((n) => Number.isNaN(n) || n < 0)) return { error: "Bitte gültige Zahlen eingeben." };
-  if (carryoverYear !== null && (Number.isNaN(carryoverYear) || carryoverYear < 2000 || carryoverYear > 2100)) return { error: "Bitte ein gültiges Jahr für den Resturlaub angeben." };
-  if (Math.round(carryoverDays * 2) !== carryoverDays * 2) return { error: "Resturlaub bitte in halben Tagen angeben." };
-  if (weeklyHours > 60) return { error: "Wochenstunden dürfen höchstens 60 sein." };
   if (password && password.length < 8) return { error: "Das Passwort muss mindestens 8 Zeichen haben." };
-  if ((entryDate && !isValidISO(entryDate)) || (exitDate && !isValidISO(exitDate))) return { error: "Bitte gültige Daten für Ein- und Austritt angeben." };
-  if (entryDate && exitDate && exitDate < entryDate) return { error: "Der Austritt liegt vor dem Eintritt." };
-  const exitedAlready = !!exitDate && exitDate < todayISO();
 
   const clash = await prisma.user.findUnique({ where: { email } });
   if (clash && clash.id !== id) return { error: "Diese E-Mail-Adresse ist schon vergeben." };
   const existing = id ? await prisma.user.findUnique({ where: { id } }) : null;
   if (id && !existing) return { error: "Person nicht gefunden." };
-
-  const hourlyCost = hourlyCostInput ?? existing?.hourlyCost ?? 0;
 
   // Rollenregeln
   if (existing && !canManageUser(actor.role, existing.role)) {
@@ -61,48 +45,46 @@ export async function saveUser(_: FormState, form: FormData): Promise<FormState>
   if ((!existing || existing.role !== role) && !assignableRoles(actor.role).includes(role)) {
     return { error: `Die Rolle „${ROLE_INFO[role].label}“ darfst du nicht vergeben.` };
   }
-  if (existing && existing.id === actor.id && (existing.role !== role || !active || exitedAlready)) {
+  if (existing && existing.id === actor.id && (existing.role !== role || !active)) {
     return { error: "Die eigene Rolle und der eigene Status können nur von einer anderen Person geändert werden." };
   }
-  if (existing?.role === "ADMIN" && existing.active && (role !== "ADMIN" || !active || exitedAlready)) {
+  if (existing?.role === "ADMIN" && existing.active && (role !== "ADMIN" || !active)) {
     const otherAdmins = await prisma.user.count({ where: { role: "ADMIN", active: true, id: { not: existing.id } } });
     if (otherAdmins === 0) return { error: "Es muss mindestens ein aktiver Admin bestehen bleiben." };
   }
 
-  const data = {
-    name, email, role, hourlyCost, weeklyHours, tracksTime, entryDate, exitDate, vacationDaysPerYear: Math.round(vacationDaysPerYear), active,
-    carryoverDays, carryoverYear: carryoverDays > 0 ? carryoverYear : null,
-  };
+  // Vertragsdaten (Eintritt, Austritt, Wochenstunden, Urlaub, Kostensatz) gehören zum Arbeitsverhältnis – siehe actions/employment.ts.
+  const data = { name, email, role, tracksTime, active };
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
   try {
     if (existing) {
-      await prisma.user.update({
-        where: { id: existing.id },
-        // Neues Passwort durch die GF meldet die Person überall ab.
-        // Neues Passwort durch GF/Admin gilt als Startpasswort und muss beim nächsten Login geändert werden.
-        data: { ...data, ...(passwordHash && { passwordHash, mustChangePassword: true, sessionVersion: { increment: 1 } }) },
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: existing.id },
+          // Neues Passwort durch GF/Admin gilt als Startpasswort, muss beim nächsten Login geändert werden und meldet überall ab.
+          data: { ...data, ...(passwordHash && { passwordHash, mustChangePassword: true, sessionVersion: { increment: 1 } }) },
+        });
+        await audit({
+          actorId: actor.id, action: "person.update", entityType: "User", entityId: existing.id,
+          subjectUserId: existing.id, changes: diffChanges(existing, data),
+        }, tx);
       });
-      if (exitDate) {
-        await dropLeavesAfterExit(existing.id, exitDate);
-        // Austritt liegt schon in der Vergangenheit: sofort sperren und abmelden
-        if (exitedAlready) {
-          await prisma.user.update({ where: { id: existing.id }, data: { active: false, sessionVersion: { increment: 1 } } });
-          await prisma.authToken.updateMany({ where: { userId: existing.id, usedAt: null }, data: { usedAt: new Date() } });
-        }
-      }
-      // Wurde bisher ohne Kostensatz gebucht, diese Stunden nachträglich mit dem neuen Satz bewerten.
-      if (existing.hourlyCost === 0 && hourlyCost > 0) {
-        await prisma.timeEntry.updateMany({ where: { userId: existing.id, costRate: 0 }, data: { costRate: hourlyCost } });
-      }
     } else {
       // Ohne Passwort wird die Person per Einladungslink eingeladen; bis dahin ist kein Login möglich.
-      const created = await prisma.user.create({
-        data: {
-          ...data,
-          passwordHash: passwordHash ?? (await bcrypt.hash(randomBytes(32).toString("hex"), 10)),
-          passwordSetAt: passwordHash ? new Date() : null,
-          mustChangePassword: !!passwordHash,
-        },
+      const created = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.create({
+          data: {
+            ...data,
+            passwordHash: passwordHash ?? (await bcrypt.hash(randomBytes(32).toString("hex"), 10)),
+            passwordSetAt: passwordHash ? new Date() : null,
+            mustChangePassword: !!passwordHash,
+          },
+        });
+        await audit({
+          actorId: actor.id, action: "person.create", entityType: "User", entityId: u.id,
+          subjectUserId: u.id, changes: diffChanges(null, data),
+        }, tx);
+        return u;
       });
       revalidatePath("/", "layout");
       redirect(`/mitarbeitende/${created.id}`);

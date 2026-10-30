@@ -15,6 +15,7 @@ import { StatStrip } from "@/components/stat-strip";
 import { Icon } from "@/components/icons";
 import { UserForm } from "@/components/user-form";
 import { InvitePanel } from "@/components/invite-panel";
+import { EmploymentsSection } from "./employments-section";
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${formatNum(n)}`;
 
@@ -37,13 +38,18 @@ export default async function PersonPage({
   const yStart = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
 
-  const [entries, leaves, workDays, firstEntry, openToken, entryCount] = await Promise.all([
+  const showPersonnel = can(me.role, "personnel.view");
+  const [entries, leaves, workDays, firstEntry, openToken, entryCount, employments, companies] = await Promise.all([
     prisma.timeEntry.findMany({ where: { userId: id, date: { gte: yStart, lte: yEnd } }, include: { project: true } }),
     prisma.leaveRequest.findMany({ where: { userId: id, status: { in: ["APPROVED", "PENDING"] } } }),
     prisma.workDay.findMany({ where: { userId: id, date: { gte: yStart, lte: yEnd } } }),
     prisma.timeEntry.findFirst({ where: { userId: id }, orderBy: { date: "asc" }, select: { date: true } }),
     prisma.authToken.findFirst({ where: { userId: id, usedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } }),
     prisma.timeEntry.count({ where: { userId: id } }),
+    showPersonnel
+      ? prisma.employment.findMany({ where: { userId: id }, include: { company: true, terms: true }, orderBy: { startDate: "desc" } })
+      : Promise.resolve([]),
+    showPersonnel ? prisma.company.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
   ]);
 
   // Soll zählt erst ab Beginn der Erfassung (Anlage der Person bzw. erste Buchung) und höchstens bis heute.
@@ -235,6 +241,10 @@ export default async function PersonPage({
           registered={!!user.passwordSetAt}
           openUntil={openToken?.expiresAt.toISOString() ?? null}
         />
+      )}
+
+      {showPersonnel && !user.anonymizedAt && (
+        <EmploymentsSection userId={user.id} employments={employments} companies={companies} canEdit={can(me.role, "personnel.edit")} />
       )}
 
       {mayManage && !user.anonymizedAt && (

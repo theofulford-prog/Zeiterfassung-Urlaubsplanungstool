@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./db";
 import { todayISO } from "./dates";
+import { hasAccessOn } from "./employment";
 
 const TTL_MS = 10 * 60 * 1000;
 const state = globalThis as unknown as { __exitsSyncedAt?: number; __exitsDay?: string };
@@ -27,4 +28,23 @@ export async function syncExits(force = false) {
 /** Offene Anträge, die nach dem Austritt beginnen, zurückziehen. */
 export async function dropLeavesAfterExit(userId: string, exitDate: string) {
   return prisma.leaveRequest.deleteMany({ where: { userId, status: "PENDING", startDate: { gt: exitDate } } });
+}
+
+/**
+ * Nach dem Beenden eines Arbeitsverhältnisses: Sind alle beendet, offene Anträge nach dem letzten Arbeitstag zurückziehen;
+ * besteht kein Zugang mehr, sofort sperren, abmelden und offene Links ungültig machen.
+ */
+export async function endAccessIfNoEmployment(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { employments: true } });
+  if (!user) return;
+  const ends = user.employments.map((e) => e.endDate);
+  if (ends.length && ends.every((d): d is string => !!d)) {
+    await dropLeavesAfterExit(userId, [...ends].sort()[ends.length - 1]);
+  }
+  if (user.active && !hasAccessOn(user, user.employments, todayISO())) {
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { active: false, sessionVersion: { increment: 1 } } }),
+      prisma.authToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } }),
+    ]);
+  }
 }
