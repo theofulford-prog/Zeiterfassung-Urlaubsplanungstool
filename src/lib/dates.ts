@@ -119,6 +119,21 @@ export function countWorkdays(from: string, to: string): number {
   return daysInRange(from, to).filter(isWorkday).length;
 }
 
+/** Wochentag nach ISO: Montag = 1 … Sonntag = 7 */
+export function isoWeekday(s: string): number {
+  return parseISO(s).getUTCDay() || 7;
+}
+
+/** Arbeitstag nach dem Wochentagsmuster eines Vertrags (z. B. [1, 2, 3, 4] = Mo–Do), ohne Feiertage. */
+export function isWorkdayFor(s: string, workDays: readonly number[]): boolean {
+  return workDays.includes(isoWeekday(s)) && !holidayName(s);
+}
+
+export function countWorkdaysFor(from: string, to: string, workDays: readonly number[]): number {
+  if (to < from) return 0;
+  return daysInRange(from, to).filter((d) => isWorkdayFor(d, workDays)).length;
+}
+
 const WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const MONTHS = [
   "Januar", "Februar", "März", "April", "Mai", "Juni",
