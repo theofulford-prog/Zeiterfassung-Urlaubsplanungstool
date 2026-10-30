@@ -3,14 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit",
-    "start:azure": "mkdir -p /home/data && prisma migrate deploy && node scripts/ensure-admin.mjs && next start",
-    "db:admins": "node --env-file=.env scripts/ensure-admin.mjs"
+    "start:azure": "prisma migrate deploy && node scripts/ensure-admin.mjs && next start",
+    "db:admins": "node --env-file=.env scripts/ensure-admin.mjs",
+    "test": "vitest run",
+    "dev:next": "next dev",
+    "db:start": "node scripts/db.mjs",
+    "db:demo": "node --env-file=.env scripts/dev-seed.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
@@ -28,9 +32,11 @@
     "@types/node": "22.18.1",
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
+    "embedded-postgres": "^17.10.0-beta.17",
     "tailwindcss": "4.1.13",
     "tsx": "4.20.5",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20"
