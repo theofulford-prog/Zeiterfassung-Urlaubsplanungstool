@@ -14,6 +14,7 @@ export default async function MehrPage() {
     { title: "Verwaltung", items: [
       ...(can(user.role, "projects.manage") ? [{ href: "/projekte", label: "Projekte", icon: "folder" as const }] : []),
       { href: "/mitarbeitende", label: "Mitarbeitende", icon: "people" },
+      ...(can(user.role, "companies.manage") ? [{ href: "/gesellschaften", label: "Gesellschaften", icon: "building" as const }] : []),
       { href: "/rollen", label: "Rollen & Rechte", icon: "shield" },
     ] },
     { title: "Persönlich", items: [

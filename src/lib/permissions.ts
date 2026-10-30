@@ -38,13 +38,20 @@ export const PERMISSIONS = {
   "roles.manage": "Rollen vergeben inkl. Admin-Rolle",
   "export.data": "Daten des Teams als CSV exportieren",
   "time.editAll": "Abgeschlossene Monate und Buchungen anderer korrigieren",
+  "companies.manage": "Gesellschaften anlegen und bearbeiten",
+  "personnel.view": "Personalakten und Arbeitsverhältnisse anderer sehen (inkl. Lohndaten)",
+  "personnel.edit": "Personalakten, Arbeitsverhältnisse und Konditionen pflegen",
+  "audit.view": "Änderungsprotokoll sehen",
 } as const;
 export type Permission = keyof typeof PERMISSIONS;
 
 /** Standardrechte – gelten, solange unter "Rollen & Rechte" nichts geändert wurde. */
 export const DEFAULT_MATRIX: Record<Role, Permission[]> = {
   ADMIN: Object.keys(PERMISSIONS) as Permission[],
-  GF: ["reports.view", "costs.view", "absence.reasons", "leave.approve", "projects.manage", "users.manage", "users.delete", "export.data", "time.editAll"],
+  GF: [
+    "reports.view", "costs.view", "absence.reasons", "leave.approve", "projects.manage", "users.manage", "users.delete", "export.data", "time.editAll",
+    "companies.manage", "personnel.view", "personnel.edit", "audit.view",
+  ],
   LEAD: ["reports.view", "leave.approve", "projects.manage", "export.data"],
   EMPLOYEE: [],
 };
@@ -116,6 +123,7 @@ export const PAGE_PERMISSIONS: [prefix: string, permission: Permission][] = [
   ["/mitarbeitende", "reports.view"],
   ["/antraege", "leave.approve"],
   ["/rollen", "reports.view"],
+  ["/gesellschaften", "companies.manage"],
 ];
 
 /** Startseite nach dem Login. */

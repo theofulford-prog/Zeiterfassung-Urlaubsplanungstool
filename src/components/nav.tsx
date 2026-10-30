@@ -27,6 +27,7 @@ export function Nav({ name, perms, pendingCount }: { name: string; perms: Permis
     ...(has("projects.manage") ? [{ href: "/projekte", label: "Projekte", icon: "folder" as const }] : []),
     ...(has("reports.view") ? [{ href: "/mitarbeitende", label: "Mitarbeitende", short: "Team", icon: "people" as const }] : []),
     ...(has("leave.approve") ? [{ href: "/antraege", label: "Anträge", icon: "inbox" as const, badge: pendingCount }] : []),
+    ...(has("companies.manage") ? [{ href: "/gesellschaften", label: "Gesellschaften", icon: "building" as const }] : []),
     ...(has("reports.view") ? [{ href: "/rollen", label: "Rollen & Rechte", icon: "shield" as const }] : []),
   ];
   const isManager = admin.length > 0;
@@ -35,7 +36,7 @@ export function Nav({ name, perms, pendingCount }: { name: string; perms: Permis
     : [...mine, { href: "/konto", label: "Konto", icon: "person" }];
   // "Mehr" bleibt aktiv, solange man sich in einem der dort gesammelten Bereiche befindet.
   const tabActive = (it: Item) =>
-    active(it.href) || (it.href === "/mehr" && ["/projekte", "/mitarbeitende", "/rollen", "/urlaub", "/konto"].some(active));
+    active(it.href) || (it.href === "/mehr" && ["/projekte", "/mitarbeitende", "/gesellschaften", "/rollen", "/urlaub", "/konto"].some(active));
 
   const sideLink = (it: Item) => (
     <Link

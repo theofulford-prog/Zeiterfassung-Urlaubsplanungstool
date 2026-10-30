@@ -19,6 +19,7 @@ const paths: Record<string, string> = {
   stop: "M7 7h10v10H7z",
   download: "M12 4v11M7 10l5 5 5-5M5 20h14",
   more: "M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z",
+  building: "M4 21V5.5A1.5 1.5 0 0 1 5.5 4h7A1.5 1.5 0 0 1 14 5.5V21M14 10h4.5a1.5 1.5 0 0 1 1.5 1.5V21M2.5 21h19M7.5 8h3M7.5 12h3M7.5 16h3M17 14v.01M17 17.5v.01",
 };
 
 export type IconName = keyof typeof paths;
