@@ -11,7 +11,18 @@ type Work = { start: string; end: string | null; breakMinutes: number };
  * Arbeitszeit eines Tages: am heutigen Tag als Stempeluhr (Beginn/Feierabend per Knopfdruck),
  * sonst als kompakte Zusammenfassung mit Bearbeiten.
  */
-export function DayWork({ date, isToday, locked, work, booked }: { date: string; isToday: boolean; locked: boolean; work?: Work; booked: number }) {
+export function DayWork({ date, isToday, locked, work, booked, employmentId, label }: {
+  date: string;
+  isToday: boolean;
+  locked: boolean;
+  work?: Work;
+  booked: number;
+  /** Arbeitsverhältnis, für das erfasst wird (bei mehreren Arbeitgebern je eines) */
+  employmentId?: string;
+  /** Gesellschaft – nur angezeigt, wenn die Person mehrere Arbeitsverhältnisse hat */
+  label?: string;
+}) {
+  const key = `${date}${employmentId ? `-${employmentId}` : ""}`;
   const [stampState, stamp, stamping] = useActionState(stampWork, undefined);
   const [saveState, save, saving] = useActionState(saveWorkDay, undefined);
   const [editing, setEditing] = useState(false);
@@ -29,7 +40,7 @@ export function DayWork({ date, isToday, locked, work, booked }: { date: string;
     <div className="grid gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[13px] font-medium text-slate-500">Arbeitszeit</p>
+          <p className="text-[13px] font-medium text-slate-500">Arbeitszeit{label ? ` · ${label}` : ""}</p>
           {work ? (
             <p className="text-[20px] leading-tight font-semibold tabular-nums">
               {work.start} – {work.end ?? <span className="text-brand-600">läuft</span>}
@@ -54,6 +65,7 @@ export function DayWork({ date, isToday, locked, work, booked }: { date: string;
       {isToday && !locked && !editing && (!work || running) && (
         <form action={stamp} className="grid gap-2">
           <input type="hidden" name="kind" value={running ? "end" : "start"} />
+          {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
           <button className={`${running ? "btn-stop" : "btn-primary"} min-h-12 w-full text-[16px]`} disabled={stamping}>
             <Icon name={running ? "stop" : "play"} className="h-5 w-5" />
             {stamping ? "Wird gespeichert …" : running ? "Feierabend jetzt" : "Arbeitsbeginn jetzt"}
@@ -69,18 +81,19 @@ export function DayWork({ date, isToday, locked, work, booked }: { date: string;
       {editing && (
         <form action={save} className="grid gap-3 rounded-xl bg-slate-50 p-3">
           <input type="hidden" name="date" value={date} />
+          {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="label" htmlFor={`start-${date}`}>Beginn</label>
-              <input className="input px-2!" id={`start-${date}`} name="start" type="time" defaultValue={work?.start ?? ""} required />
+              <label className="label" htmlFor={`start-${key}`}>Beginn</label>
+              <input className="input px-2!" id={`start-${key}`} name="start" type="time" defaultValue={work?.start ?? ""} required />
             </div>
             <div>
-              <label className="label" htmlFor={`end-${date}`}>Ende</label>
-              <input className="input px-2!" id={`end-${date}`} name="end" type="time" defaultValue={work?.end ?? ""} />
+              <label className="label" htmlFor={`end-${key}`}>Ende</label>
+              <input className="input px-2!" id={`end-${key}`} name="end" type="time" defaultValue={work?.end ?? ""} />
             </div>
             <div>
-              <label className="label" htmlFor={`break-${date}`}>Pause (Min.)</label>
-              <input className="input px-2!" id={`break-${date}`} name="breakMinutes" inputMode="numeric" defaultValue={work?.breakMinutes ?? ""} placeholder="0" />
+              <label className="label" htmlFor={`break-${key}`}>Pause (Min.)</label>
+              <input className="input px-2!" id={`break-${key}`} name="breakMinutes" inputMode="numeric" defaultValue={work?.breakMinutes ?? ""} placeholder="0" />
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

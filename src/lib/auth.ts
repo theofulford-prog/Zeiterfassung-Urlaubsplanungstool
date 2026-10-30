@@ -6,6 +6,7 @@ import { can, homeFor, type Permission } from "./permissions";
 import { loadPermissions } from "./rbac";
 import { syncExits } from "./exits";
 import { todayISO } from "./dates";
+import { hasAccessOn } from "./employment";
 import { SESSION_COOKIE, verifySession } from "./session";
 
 /**
@@ -20,7 +21,8 @@ export async function requireUser(opts: { allowPasswordChange?: boolean } = {}) 
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
   if (!user || !user.active || user.sessionVersion !== (session.v ?? 0)) redirect("/abmelden");
   // Nach dem letzten Arbeitstag kein Zugriff mehr (auch bevor syncExits gelaufen ist)
-  if (user.exitDate && user.exitDate < todayISO()) redirect("/abmelden");
+  const emps = await prisma.employment.findMany({ where: { userId: user.id }, select: { id: true, startDate: true, endDate: true } });
+  if (!hasAccessOn(user, emps, todayISO())) redirect("/abmelden");
   if (user.mustChangePassword && !opts.allowPasswordChange) redirect("/passwort-aendern");
   return user;
 }

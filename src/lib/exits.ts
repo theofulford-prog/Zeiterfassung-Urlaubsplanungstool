@@ -13,7 +13,12 @@ const state = globalThis as unknown as { __exitsSyncedAt?: number; __exitsDay?: 
 export async function syncExits(force = false) {
   const today = todayISO();
   if (!force && state.__exitsDay === today && state.__exitsSyncedAt && Date.now() - state.__exitsSyncedAt < TTL_MS) return;
-  const exited = await prisma.user.findMany({ where: { exitDate: { lt: today }, active: true }, select: { id: true } });
+  // Kein Zugang mehr: weder ein nicht beendetes Arbeitsverhältnis noch das Kennzeichen „Zugang ohne Arbeitsverhältnis“
+  const candidates = await prisma.user.findMany({
+    where: { active: true, accessWithoutEmployment: false },
+    select: { id: true, accessWithoutEmployment: true, employments: { select: { id: true, startDate: true, endDate: true } } },
+  });
+  const exited = candidates.filter((u) => !hasAccessOn(u, u.employments, today));
   if (exited.length) {
     const ids = exited.map((u) => u.id);
     await prisma.$transaction([

@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { headers } from "next/headers";
 import { prisma } from "./db";
 import { todayISO } from "./dates";
+import { hasAccessOn } from "./employment";
 
 export const TOKEN_DAYS = { INVITE: 7, RESET: 3 } as const;
 export type TokenPurpose = keyof typeof TOKEN_DAYS;
@@ -25,7 +26,8 @@ export async function findValidToken(raw: string) {
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(raw)) return null;
   const token = await prisma.authToken.findUnique({ where: { tokenHash: hashToken(raw) }, include: { user: true } });
   if (!token || token.usedAt || token.expiresAt < new Date() || !token.user.active || token.user.anonymizedAt) return null;
-  if (token.user.exitDate && token.user.exitDate < todayISO()) return null;
+  const emps = await prisma.employment.findMany({ where: { userId: token.userId }, select: { id: true, startDate: true, endDate: true } });
+  if (!hasAccessOn(token.user, emps, todayISO())) return null;
   return token;
 }
 

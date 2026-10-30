@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { homeFor } from "@/lib/permissions";
 import { todayISO } from "@/lib/dates";
+import { hasAccessOn } from "@/lib/employment";
 import { loadPermissions } from "@/lib/rbac";
 import { clearFailures, isLocked, registerFailure } from "@/lib/rate-limit";
 import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/session";
@@ -30,7 +31,8 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
 
   const user = await prisma.user.findUnique({ where: { email } });
   const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
-  const exited = !!user?.exitDate && user.exitDate < todayISO();
+  const emps = user ? await prisma.employment.findMany({ where: { userId: user.id }, select: { id: true, startDate: true, endDate: true } }) : [];
+  const exited = !!user && !hasAccessOn(user, emps, todayISO());
   if (!user || !user.active || exited || !ok) {
     keys.forEach(registerFailure);
     return { error: "E-Mail oder Passwort ist falsch." };

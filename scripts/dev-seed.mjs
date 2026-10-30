@@ -15,8 +15,8 @@ const email = "demo-admin@teamzeit.test";
 const passwordHash = await bcrypt.hash("Demo-Passwort-2026", 10);
 await prisma.user.upsert({
   where: { email },
-  update: { passwordHash, active: true, mustChangePassword: false },
-  create: { email, name: "Demo Admin", role: "ADMIN", passwordHash, passwordSetAt: new Date(), mustChangePassword: false },
+  update: { passwordHash, active: true, mustChangePassword: false, accessWithoutEmployment: true },
+  create: { email, name: "Demo Admin", role: "ADMIN", passwordHash, passwordSetAt: new Date(), mustChangePassword: false, accessWithoutEmployment: true },
 });
 console.log(`Demo-Konto ${email} bereit.`);
 await prisma.$disconnect();

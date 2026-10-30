@@ -4,7 +4,10 @@ import {
   addDays, formatDateShort, formatDayLong, holidayName, isValidISO, isWeekend, isoWeek, startOfWeek, todayISO, weekdayShort,
 } from "@/lib/dates";
 import { formatHours, formatNum } from "@/lib/format";
-import { targetHoursFor } from "@/lib/stats";
+import { personTargetHours } from "@/lib/stats";
+import { activeEmploymentsOn } from "@/lib/employment";
+import { companyLabel, lastUsedEmploymentId, loadEmployments } from "@/lib/people";
+import { termsOn } from "@/lib/terms";
 import { canEditDate, LOCK_DAY } from "@/lib/lock";
 import { can } from "@/lib/permissions";
 import { formatMinutes, netMinutes } from "@/lib/worktime";
@@ -32,26 +35,34 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const isCurrentWeek = today >= monday && today <= sunday;
 
-  const [entries, leaves, workDays, allProjects, recent] = await Promise.all([
+  const [entries, leaves, workDays, allProjects, recent, employmentMap, lastEmploymentId] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { userId: user.id, date: { gte: monday, lte: sunday } },
-      include: { project: true },
+      include: { project: true, employment: { include: { company: true } } },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     }),
     prisma.leaveRequest.findMany({ where: { userId: user.id, startDate: { lte: sunday }, endDate: { gte: monday } } }),
     prisma.workDay.findMany({ where: { userId: user.id, date: { gte: monday, lte: sunday } } }),
     prisma.project.findMany({ select: { id: true, name: true, category: true, active: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.timeEntry.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 40, select: { projectId: true } }),
+    loadEmployments([user.id]),
+    lastUsedEmploymentId(user.id),
   ]);
+  const employments = employmentMap.get(user.id) ?? [];
+  // Mehrere Arbeitsverhältnisse in dieser Woche → Gesellschaft überall mit anzeigen
+  const weekEmployments = employments.filter((e) => days.some((d) => activeEmploymentsOn([e], d).length));
+  const multi = weekEmployments.length > 1;
   const activeProjects = allProjects.filter((p) => p.active);
   const recentIds = [...new Set(recent.map((r) => r.projectId))].filter((id) => activeProjects.some((p) => p.id === id)).slice(0, 4);
-  const workByDate = new Map(workDays.map((w) => [w.date, w]));
+  const workByKey = new Map(workDays.map((w) => [`${w.employmentId}|${w.date}`, w]));
   const netWeek = workDays.reduce((s, w) => s + netMinutes(w), 0);
 
   const total = entries.reduce((s, e) => s + e.hours, 0);
-  const target = targetHoursFor(user, monday, sunday, leaves);
+  const target = personTargetHours(employments, monday, sunday, leaves) ?? 0;
   // In der laufenden Woche zählt für die Differenz nur das Soll bis heute.
-  const targetSoFar = isCurrentWeek ? targetHoursFor(user, monday, today, leaves) : target;
+  const targetSoFar = isCurrentWeek ? personTargetHours(employments, monday, today, leaves) ?? 0 : target;
+  const weeklyHours = activeEmploymentsOn(employments, selected)
+    .reduce((s, e) => s + (termsOn(e.terms, selected)?.weeklyHours ?? 0), 0);
   const diff = (isCurrentWeek ? entries.filter((e) => e.date <= today).reduce((s, e) => s + e.hours, 0) : total) - targetSoFar;
   const dayTotals = days.map((d) => entries.filter((e) => e.date === d).reduce((s, e) => s + e.hours, 0));
   const absentOn = (d: string) => leaves.find((l) => l.status === "APPROVED" && l.startDate <= d && l.endDate >= d);
@@ -59,11 +70,13 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
   // Gewählter Tag
   const dayEntries = entries.filter((e) => e.date === selected);
   const dayBooked = dayEntries.reduce((s, e) => s + e.hours, 0);
-  const dayWork = workByDate.get(selected);
+  const dayEmployments = activeEmploymentsOn(employments, selected);
+  const dayWorks = dayEmployments.map((e) => workByKey.get(`${e.id}|${selected}`)).filter((w) => !!w);
   const dayLocked = !canEditDate(selected, user.role);
   const dayHoliday = holidayName(selected);
   const dayAbsence = absentOn(selected);
-  const remaining = dayWork?.end ? Math.max(0, Math.round((netMinutes(dayWork) / 60 - dayBooked) * 4) / 4) : 0;
+  const dayNet = dayWorks.length && dayWorks.every((w) => w.end) ? dayWorks.reduce((s, w) => s + netMinutes(w), 0) : 0;
+  const remaining = dayNet ? Math.max(0, Math.round((dayNet / 60 - dayBooked) * 4) / 4) : 0;
 
   const byProject = new Map<string, { id: string; name: string; category: string; perDay: number[]; sum: number }>();
   for (const e of entries) {
@@ -91,7 +104,7 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
         <StatStrip
           items={[
             { label: "Erfasst", value: formatHours(total) },
-            { label: "Soll", value: formatHours(target), hint: `${formatNum(user.weeklyHours)} h/Woche` },
+            { label: "Soll", value: formatHours(target), hint: `${formatNum(weeklyHours)} h/Woche` },
             {
               label: isCurrentWeek ? "Saldo bis heute" : "Saldo",
               value: `${diff >= 0 ? "+" : ""}${formatHours(diff)}`,
@@ -125,15 +138,25 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
           )}
 
           <div className="grid md:grid-cols-2 md:divide-x md:divide-slate-100">
-            <div className="border-b border-slate-100 p-4 md:border-b-0 md:p-5">
-              <DayWork
-                key={`${selected}-${dayWork?.start}-${dayWork?.end}-${dayWork?.breakMinutes}`}
-                date={selected}
-                isToday={selected === today}
-                locked={dayLocked}
-                booked={dayBooked}
-                work={dayWork ? { start: dayWork.start, end: dayWork.end, breakMinutes: dayWork.breakMinutes } : undefined}
-              />
+            <div className="grid content-start gap-5 border-b border-slate-100 p-4 md:border-b-0 md:p-5">
+              {dayEmployments.length === 0 && (
+                <p className="text-[15px] text-slate-500">An diesem Tag besteht kein Arbeitsverhältnis.</p>
+              )}
+              {dayEmployments.map((emp) => {
+                const w = workByKey.get(`${emp.id}|${selected}`);
+                return (
+                  <DayWork
+                    key={`${selected}-${emp.id}-${w?.start}-${w?.end}-${w?.breakMinutes}`}
+                    date={selected}
+                    isToday={selected === today}
+                    locked={dayLocked}
+                    booked={dayEntries.filter((e) => e.employmentId === emp.id).reduce((s, e) => s + e.hours, 0)}
+                    work={w ? { start: w.start, end: w.end, breakMinutes: w.breakMinutes } : undefined}
+                    employmentId={emp.id}
+                    label={dayEmployments.length > 1 ? companyLabel(emp) : undefined}
+                  />
+                );
+              })}
             </div>
             <div className="grid content-start gap-2 p-4 md:p-5">
               <p className="text-[13px] font-medium text-slate-500">Projekte</p>
@@ -146,7 +169,8 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
                       locked={!canEditDate(e.date, user.role)}
                       entry={{
                         id: e.id, date: e.date, dayLabel: `${weekdayShort(e.date)} ${formatDateShort(e.date)}`,
-                        hours: e.hours, note: e.note, projectId: e.projectId, projectName: e.project.name,
+                        hours: e.hours, note: e.note, projectId: e.projectId,
+                        projectName: multi && e.employment ? `${e.project.name} · ${companyLabel(e.employment)}` : e.project.name,
                       }}
                     />
                   ))}
@@ -154,7 +178,7 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
               ) : (
                 <p className="text-[15px] text-slate-500">An diesem Tag ist noch nichts gebucht.</p>
               )}
-              {dayLocked ? (
+              {dayEmployments.length === 0 ? null : dayLocked ? (
                 <p className="mt-1 flex items-center gap-1.5 text-[13px] text-slate-500">
                   {selected > today
                     ? "Zeiten können erst am jeweiligen Tag erfasst werden."
@@ -162,7 +186,15 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
                 </p>
               ) : (
                 <div className="mt-1">
-                  <QuickBook key={selected} date={selected} projects={activeProjects} recentIds={recentIds} remaining={remaining} />
+                  <QuickBook
+                    key={selected}
+                    date={selected}
+                    projects={activeProjects}
+                    recentIds={recentIds}
+                    remaining={remaining}
+                    employments={dayEmployments.map((e) => ({ id: e.id, label: e.company.name }))}
+                    defaultEmploymentId={lastEmploymentId}
+                  />
                 </div>
               )}
             </div>
@@ -216,22 +248,26 @@ export default async function ZeitenPage({ searchParams }: { searchParams: Promi
               <tr><th>Tag</th><th>Beginn</th><th>Ende</th><th>Pause (Min.)</th><th className="text-right!">Netto</th><th>Hinweise</th><th></th></tr>
             </thead>
             <tbody>
-              {days.map((d, i) => {
+              {days.flatMap((d) => {
                 const absence = absentOn(d);
                 const hol = holidayName(d);
-                const w = workByDate.get(d);
-                return (
-                  <WorkDayRow
-                    key={`${d}-${w?.start}-${w?.end}-${w?.breakMinutes}`}
-                    date={d}
-                    label={`${weekdayShort(d)} ${formatDateShort(d)}`}
-                    muted={isWeekend(d) || !!hol}
-                    locked={!canEditDate(d, user.role)}
-                    booked={dayTotals[i]}
-                    initial={w ? { start: w.start, end: w.end, breakMinutes: w.breakMinutes } : undefined}
-                    absence={hol ?? (absence ? (absence.type === "SICK" ? "krank" : "abwesend") : undefined)}
-                  />
-                );
+                // Eine Zeile je Arbeitsverhältnis, das an dem Tag besteht
+                return activeEmploymentsOn(employments, d).map((emp) => {
+                  const w = workByKey.get(`${emp.id}|${d}`);
+                  return (
+                    <WorkDayRow
+                      key={`${d}-${emp.id}-${w?.start}-${w?.end}-${w?.breakMinutes}`}
+                      date={d}
+                      employmentId={emp.id}
+                      label={`${weekdayShort(d)} ${formatDateShort(d)}${multi ? ` · ${companyLabel(emp)}` : ""}`}
+                      muted={isWeekend(d) || !!hol}
+                      locked={!canEditDate(d, user.role)}
+                      booked={entries.filter((e) => e.date === d && e.employmentId === emp.id).reduce((s, e) => s + e.hours, 0)}
+                      initial={w ? { start: w.start, end: w.end, breakMinutes: w.breakMinutes } : undefined}
+                      absence={hol ?? (absence ? (absence.type === "SICK" ? "krank" : "abwesend") : undefined)}
+                    />
+                  );
+                });
               })}
             </tbody>
           </table>

@@ -6,6 +6,9 @@ import { requireUser } from "@/lib/auth";
 import { isValidISO, todayISO } from "@/lib/dates";
 import { canEditDate, lockMessage } from "@/lib/lock";
 import { can } from "@/lib/permissions";
+import { resolveEmployment } from "@/lib/employment";
+import { loadEmployments } from "@/lib/people";
+import { termsOn } from "@/lib/terms";
 import { nowHM, parseHM, requiredBreak } from "@/lib/worktime";
 import type { FormState } from "./auth";
 
@@ -14,6 +17,12 @@ function parseHours(v: FormDataEntryValue | null): number | string {
   if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return "Stunden müssen zwischen 0 und 24 liegen.";
   if (Math.round(hours * 4) !== hours * 4) return "Bitte in Viertelstunden erfassen (z. B. 1,25 oder 7,5).";
   return hours;
+}
+
+/** Arbeitsverhältnis für eine Buchung am Tag – ohne Rückfrage, wenn nur eines besteht. */
+async function employmentFor(userId: string, date: string, form: FormData) {
+  const emps = (await loadEmployments([userId])).get(userId) ?? [];
+  return resolveEmployment(emps, date, String(form.get("employmentId") ?? "") || null);
 }
 
 async function checkDayTotal(userId: string, date: string, hours: number, excludeId?: string) {
@@ -37,10 +46,14 @@ export async function addTimeEntry(_: FormState, form: FormData): Promise<FormSt
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project || !project.active) return { error: "Bitte ein aktives Projekt wählen." };
+  const emp = await employmentFor(user.id, date, form);
+  if (typeof emp === "string") return { error: emp };
   if (!(await checkDayTotal(user.id, date, hours))) return { error: "An diesem Tag wären es mehr als 24 Stunden." };
 
+  // Kostensatz der am Buchungstag gültigen Konditionen – spätere Änderungen verändern diese Buchung nicht.
+  const costRate = termsOn(emp.terms, date)?.costRate ?? 0;
   await prisma.timeEntry.create({
-    data: { userId: user.id, projectId, date, hours, note, costRate: user.hourlyCost },
+    data: { userId: user.id, employmentId: emp.id, projectId, date, hours, note, costRate },
   });
   revalidatePath("/", "layout");
   return { ok: `${hours.toString().replace(".", ",")} h auf „${project.name}“ gebucht.` };
@@ -87,9 +100,11 @@ export async function saveWorkDay(_: FormState, form: FormData): Promise<FormSta
 
   if (!isValidISO(date)) return { error: "Ungültiges Datum." };
   if (!canEditDate(date, user.role)) return { error: lockMessage(date) };
+  const emp = await employmentFor(user.id, date, form);
+  if (typeof emp === "string") return { error: emp };
 
   if (!start && !end) {
-    await prisma.workDay.deleteMany({ where: { userId: user.id, date } });
+    await prisma.workDay.deleteMany({ where: { employmentId: emp.id, date } });
     revalidatePath("/", "layout");
     return { ok: "Arbeitszeit entfernt." };
   }
@@ -104,9 +119,9 @@ export async function saveWorkDay(_: FormState, form: FormData): Promise<FormSta
 
   const data = { start, end: end || null, breakMinutes };
   await prisma.workDay.upsert({
-    where: { userId_date: { userId: user.id, date } },
+    where: { employmentId_date: { employmentId: emp.id, date } },
     update: data,
-    create: { userId: user.id, date, ...data },
+    create: { userId: user.id, employmentId: emp.id, date, ...data },
   });
   revalidatePath("/", "layout");
   return { ok: "Gespeichert." };
@@ -121,11 +136,13 @@ export async function stampWork(_: FormState, form: FormData): Promise<FormState
   const kind = String(form.get("kind") ?? "");
   const today = todayISO();
   const now = nowHM();
-  const existing = await prisma.workDay.findUnique({ where: { userId_date: { userId: user.id, date: today } } });
+  const emp = await employmentFor(user.id, today, form);
+  if (typeof emp === "string") return { error: emp };
+  const existing = await prisma.workDay.findUnique({ where: { employmentId_date: { employmentId: emp.id, date: today } } });
 
   if (kind === "start") {
     if (existing) return { error: `Arbeitsbeginn ist schon eingetragen (${existing.start}).` };
-    await prisma.workDay.create({ data: { userId: user.id, date: today, start: now, end: null, breakMinutes: 0 } });
+    await prisma.workDay.create({ data: { userId: user.id, employmentId: emp.id, date: today, start: now, end: null, breakMinutes: 0 } });
     revalidatePath("/", "layout");
     return { ok: `Arbeitsbeginn ${now} gespeichert.` };
   }

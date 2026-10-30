@@ -122,7 +122,9 @@ model WorkDay {
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   employment   Employment? @relation(fields: [employmentId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, date])
+  /// Je Arbeitsverhältnis ein Eintrag pro Tag (bei zwei Arbeitgebern zwei Einträge)
+  @@unique([employmentId, date])
+  @@index([userId, date])
 }
 
 /// Einmal-Links für Einladung und Passwort-Zurücksetzen. Gespeichert wird nur der Hash des Tokens.

@@ -37,7 +37,7 @@ try {
       data: {
         email: a.email, name: a.name, role: a.role,
         passwordHash: await bcrypt.hash(a.password, 10),
-        passwordSetAt: new Date(), mustChangePassword: true,
+        passwordSetAt: new Date(), mustChangePassword: true, accessWithoutEmployment: true,
         // Admins/GF erfassen standardmäßig keine Arbeitszeit; bei Bedarf auf der Personenseite einschalten.
         tracksTime: false,
       },

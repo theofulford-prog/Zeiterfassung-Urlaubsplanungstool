@@ -5,9 +5,10 @@ import { saveWorkDay } from "@/app/actions/time";
 import { arbzgWarnings, formatMinutes, netMinutes } from "@/lib/worktime";
 
 export function WorkDayRow({
-  date, label, muted, locked, booked, initial, absence,
+  date, label, muted, locked, booked, initial, absence, employmentId,
 }: {
   date: string;
+  employmentId?: string;
   label: string;
   muted: boolean;
   locked: boolean;
@@ -16,7 +17,7 @@ export function WorkDayRow({
   absence?: string;
 }) {
   const [state, action, pending] = useActionState(saveWorkDay, undefined);
-  const formId = `wd-${date}`;
+  const formId = `wd-${date}${employmentId ? `-${employmentId}` : ""}`;
   const net = initial ? netMinutes(initial) : 0;
   const warnings = initial ? arbzgWarnings(initial) : [];
   const diff = initial ? booked * 60 - net : 0;
@@ -44,6 +45,7 @@ export function WorkDayRow({
         {!locked && (
           <form id={formId} action={action}>
             <input type="hidden" name="date" value={date} />
+            {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
             <button className="btn-secondary px-2.5! py-1! text-xs" disabled={pending}>{pending ? "…" : "Speichern"}</button>
           </form>
         )}

@@ -13,7 +13,15 @@ const fmt = (n: number) => n.toLocaleString("de-DE", { maximumFractionDigits: 2 
  * Zeit für den gewählten Tag buchen: Projekt wählen, Stunden per Schnellwahl oder Eingabe.
  * "Rest" schlägt die noch nicht verbuchte Arbeitszeit des Tages vor.
  */
-export function QuickBook({ date, projects, recentIds, remaining }: { date: string; projects: P[]; recentIds: string[]; remaining: number }) {
+export function QuickBook({ date, projects, recentIds, remaining, employments = [], defaultEmploymentId }: {
+  date: string;
+  projects: P[];
+  recentIds: string[];
+  remaining: number;
+  /** Nur bei mehreren Arbeitsverhältnissen am Tag: Auswahl der Gesellschaft */
+  employments?: { id: string; label: string }[];
+  defaultEmploymentId?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [hours, setHours] = useState("");
   const [state, action, pending] = useActionState(addTimeEntry, undefined);
@@ -46,6 +54,21 @@ export function QuickBook({ date, projects, recentIds, remaining }: { date: stri
   return (
     <form action={action} className="grid gap-3 rounded-xl bg-slate-50 p-3">
       <input type="hidden" name="date" value={date} />
+      {employments.length > 1 && (
+        <div>
+          <label className="label" htmlFor={`employment-${date}`}>Gesellschaft</label>
+          <select
+            className="input"
+            id={`employment-${date}`}
+            name="employmentId"
+            required
+            defaultValue={employments.some((e) => e.id === defaultEmploymentId) ? defaultEmploymentId! : ""}
+          >
+            <option value="" disabled>Bitte wählen …</option>
+            {employments.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+          </select>
+        </div>
+      )}
       <div>
         <label className="label" htmlFor={`project-${date}`}>Projekt / Thema</label>
         <select className="input" id={`project-${date}`} name="projectId" required defaultValue={recent[0]?.id ?? ""}>
