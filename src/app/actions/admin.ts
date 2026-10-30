@@ -164,6 +164,7 @@ export async function anonymizeUser(_: FormState, form: FormData): Promise<FormS
       },
     }),
     prisma.authToken.deleteMany({ where: { userId: t.id } }),
+    prisma.personalRecord.deleteMany({ where: { userId: t.id } }),
     prisma.leaveRequest.updateMany({ where: { userId: t.id }, data: { note: null } }),
     prisma.leaveRequest.deleteMany({ where: { userId: t.id, status: "PENDING" } }),
   ]);

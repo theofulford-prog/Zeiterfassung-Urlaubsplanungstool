@@ -4,20 +4,13 @@ import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Disclosure } from "@/components/disclosure";
 import { formatDate, todayISO } from "@/lib/dates";
-import { CONTRACT_TYPES, isEmployedOn } from "@/lib/employment";
+import { CONTRACT_TYPES, formatWorkDays, isEmployedOn } from "@/lib/employment";
 import { formatEUR, formatNum } from "@/lib/format";
 import { termsOn } from "@/lib/terms";
 
 type Emp = Employment & { company: Company; terms: EmploymentTerms[] };
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-
-export function formatWorkDays(days: number[]): string {
-  const sorted = [...days].sort((a, b) => a - b);
-  const contiguous = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
-  if (contiguous && sorted.length > 2) return `${WEEKDAYS[sorted[0] - 1]}–${WEEKDAYS[sorted[sorted.length - 1] - 1]}`;
-  return sorted.map((d) => WEEKDAYS[d - 1]).join(", ");
-}
 
 export function describeTerms(t: EmploymentTerms): string {
   const parts = [

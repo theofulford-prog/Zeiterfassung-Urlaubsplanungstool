@@ -19,6 +19,8 @@ import { Icon } from "@/components/icons";
 import { UserForm } from "@/components/user-form";
 import { InvitePanel } from "@/components/invite-panel";
 import { EmploymentsSection } from "./employments-section";
+import { PersonalSection } from "./personal-section";
+import { AuditList } from "@/components/audit-list";
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${formatNum(n)}`;
 
@@ -42,15 +44,22 @@ export default async function PersonPage({
   const yEnd = `${year}-12-31`;
 
   const showPersonnel = can(me.role, "personnel.view");
-  const [entries, leaves, workDays, openToken, entryCount, employmentMap, companies] = await Promise.all([
+  const showAudit = can(me.role, "audit.view");
+  const [entries, leaves, workDays, openToken, entryCount, employmentMap, companies, personalRecord, auditEntries] = await Promise.all([
     prisma.timeEntry.findMany({ where: { userId: id, date: { gte: yStart, lte: yEnd } }, include: { project: true } }),
     prisma.leaveRequest.findMany({ where: { userId: id, status: { in: ["APPROVED", "PENDING"] } } }),
     prisma.workDay.findMany({ where: { userId: id, date: { gte: yStart, lte: yEnd } } }),
     prisma.authToken.findFirst({ where: { userId: id, usedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } }),
     prisma.timeEntry.count({ where: { userId: id } }),
     loadEmployments([id]),
-    showPersonnel ? prisma.company.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
+    showPersonnel || showAudit ? prisma.company.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
+    showPersonnel ? prisma.personalRecord.findUnique({ where: { userId: id } }) : Promise.resolve(null),
+    showAudit ? prisma.auditLog.findMany({ where: { subjectUserId: id }, orderBy: { at: "desc" }, take: 50 }) : Promise.resolve([]),
   ]);
+  const actorIds = [...new Set(auditEntries.map((a) => a.actorId).filter((x): x is string => !!x))];
+  const actors = new Map(
+    (await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
+  );
 
   const employments = employmentMap.get(id) ?? [];
   const exit = lastWorkingDay(employments);
@@ -264,6 +273,17 @@ export default async function PersonPage({
 
       {showPersonnel && !user.anonymizedAt && (
         <EmploymentsSection userId={user.id} employments={employments} companies={companies} canEdit={can(me.role, "personnel.edit")} />
+      )}
+
+      {showPersonnel && !user.anonymizedAt && (
+        <PersonalSection userId={user.id} record={personalRecord} canEdit={can(me.role, "personnel.edit")} />
+      )}
+
+      {showAudit && (
+        <section className="card mb-6">
+          <h2 className="px-4 pt-4 pb-2 font-semibold md:px-5">Protokoll</h2>
+          <AuditList entries={auditEntries} actors={actors} names={new Map(companies.map((c) => [c.id, c.name]))} empty="Noch keine Einträge." />
+        </section>
       )}
 
       {mayManage && !user.anonymizedAt && (

@@ -36,7 +36,7 @@ export function Nav({ name, perms, pendingCount }: { name: string; perms: Permis
     : [...mine, { href: "/konto", label: "Konto", icon: "person" }];
   // "Mehr" bleibt aktiv, solange man sich in einem der dort gesammelten Bereiche befindet.
   const tabActive = (it: Item) =>
-    active(it.href) || (it.href === "/mehr" && ["/projekte", "/mitarbeitende", "/gesellschaften", "/rollen", "/urlaub", "/konto"].some(active));
+    active(it.href) || (it.href === "/mehr" && ["/projekte", "/mitarbeitende", "/gesellschaften", "/rollen", "/urlaub", "/konto", "/profil"].some(active));
 
   const sideLink = (it: Item) => (
     <Link

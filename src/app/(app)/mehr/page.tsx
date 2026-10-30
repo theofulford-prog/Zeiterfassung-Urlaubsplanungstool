@@ -19,6 +19,7 @@ export default async function MehrPage() {
     ] },
     { title: "Persönlich", items: [
       { href: "/urlaub", label: "Mein Urlaub", icon: "sun" },
+      { href: "/profil", label: "Mein Profil", icon: "person" },
       { href: "/konto", label: "Mein Konto", icon: "person" },
     ] },
   ];

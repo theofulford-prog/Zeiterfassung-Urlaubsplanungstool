@@ -49,3 +49,13 @@ export function lastWorkingDay(emps: readonly Span[]): string | null {
   if (emps.length === 0 || emps.some((e) => !e.endDate)) return null;
   return emps.map((e) => e.endDate!).sort()[emps.length - 1];
 }
+
+const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+/** Arbeitstage lesbar: [1,2,3,4,5] → "Mo–Fr", [1,3,5] → "Mo, Mi, Fr". */
+export function formatWorkDays(days: readonly number[]): string {
+  const sorted = [...days].sort((a, b) => a - b);
+  const contiguous = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
+  if (contiguous && sorted.length > 2) return `${WEEKDAYS[sorted[0] - 1]}–${WEEKDAYS[sorted[sorted.length - 1] - 1]}`;
+  return sorted.map((d) => WEEKDAYS[d - 1]).join(", ");
+}
