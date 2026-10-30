@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasAccessOn, resolveEmployment } from "./employment";
+import { hasAccessOn, lastWorkingDay, resolveEmployment } from "./employment";
 
 const a = { id: "a", startDate: "2026-01-01", endDate: "2026-06-30" };
 const b = { id: "b", startDate: "2026-01-01", endDate: null };
@@ -29,5 +29,14 @@ describe("Zugang", () => {
     expect(hasAccessOn(u, [later], "2026-11-15")).toBe(true);
     expect(hasAccessOn(u, [], "2026-11-15")).toBe(false);
     expect(hasAccessOn({ accessWithoutEmployment: true }, [], "2026-11-15")).toBe(true);
+  });
+});
+
+describe("Letzter Arbeitstag einer Person", () => {
+  it("nur wenn alle Arbeitsverhältnisse ein Ende haben", () => {
+    expect(lastWorkingDay([a])).toBe("2026-06-30");
+    expect(lastWorkingDay([a, { id: "x", startDate: "2026-01-01", endDate: "2026-09-30" }])).toBe("2026-09-30");
+    expect(lastWorkingDay([a, b])).toBeNull();
+    expect(lastWorkingDay([])).toBeNull();
   });
 });

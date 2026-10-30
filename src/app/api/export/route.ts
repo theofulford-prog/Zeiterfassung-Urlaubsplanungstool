@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { addDays, formatDate, isValidISO, monthEnd, monthStart, todayISO } from "@/lib/dates";
 import { LEAVE_STATUS, LEAVE_TYPES } from "@/lib/format";
 import { can } from "@/lib/permissions";
+import { hasAccessOn } from "@/lib/employment";
 import { loadPermissions } from "@/lib/rbac";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { netMinutes } from "@/lib/worktime";
@@ -20,7 +21,8 @@ export async function GET(req: NextRequest) {
   await loadPermissions();
   const session = await verifySession((await cookies()).get(SESSION_COOKIE)?.value);
   const me = session && (await prisma.user.findUnique({ where: { id: session.userId } }));
-  if (!me || !me.active || me.sessionVersion !== (session.v ?? 0) || (me.exitDate && me.exitDate < todayISO())) {
+  const myEmployments = me ? await prisma.employment.findMany({ where: { userId: me.id }, select: { id: true, startDate: true, endDate: true } }) : [];
+  if (!me || !me.active || me.sessionVersion !== (session.v ?? 0) || !hasAccessOn(me, myEmployments, todayISO())) {
     return new Response("Nicht angemeldet", { status: 401 });
   }
   if (me.mustChangePassword) return new Response("Bitte zuerst das Passwort ändern", { status: 403 });
@@ -44,12 +46,14 @@ export async function GET(req: NextRequest) {
   if (typ === "arbeitszeit") {
     const rows = await prisma.workDay.findMany({
       where: { date: { gte: von, lte: bis }, ...(person && { userId: person }) },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true } }, employment: { include: { company: { select: { name: true } } } } },
       orderBy: [{ date: "asc" }],
     });
     body = csv([
-      ["Datum", "Person", "Beginn", "Ende", "Pause (Min.)", "Netto (Std.)"],
-      ...rows.map((w) => [formatDate(w.date), w.user.name, w.start, w.end ?? "läuft", String(w.breakMinutes), netMinutes(w) / 60]),
+      ["Datum", "Person", "Gesellschaft", "Beginn", "Ende", "Pause (Min.)", "Netto (Std.)"],
+      ...rows.map((w) => [
+        formatDate(w.date), w.user.name, w.employment?.company.name, w.start, w.end ?? "läuft", String(w.breakMinutes), netMinutes(w) / 60,
+      ]),
     ]);
     name = "arbeitszeiten";
   } else if (typ === "abwesenheiten") {
@@ -67,14 +71,18 @@ export async function GET(req: NextRequest) {
   } else {
     const rows = await prisma.timeEntry.findMany({
       where: { date: { gte: von, lte: bis }, ...(person && { userId: person }), ...(projekt && { projectId: projekt }) },
-      include: { user: { select: { name: true } }, project: { select: { name: true, category: true } } },
+      include: {
+        user: { select: { name: true } },
+        project: { select: { name: true, category: true } },
+        employment: { include: { company: { select: { name: true } } } },
+      },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     });
-    const head = ["Datum", "Person", "Projekt", "Kategorie", "Stunden", ...(showCosts ? ["Kostensatz €/h", "Kosten €"] : []), "Notiz"];
+    const head = ["Datum", "Person", "Gesellschaft", "Projekt", "Kategorie", "Stunden", ...(showCosts ? ["Kostensatz €/h", "Kosten €"] : []), "Notiz"];
     body = csv([
       head,
       ...rows.map((e) => [
-        formatDate(e.date), e.user.name, e.project.name, e.project.category, e.hours,
+        formatDate(e.date), e.user.name, e.employment?.company.name, e.project.name, e.project.category, e.hours,
         ...(showCosts ? [e.costRate, e.hours * e.costRate] : []), e.note,
       ]),
     ]);

@@ -5,7 +5,10 @@ import { can, canManageUser, ROLE_INFO, normalizeRole } from "@/lib/permissions"
 import { prisma } from "@/lib/db";
 import { addMonths, isWorkday, monthEnd, monthLabel, monthLabelShort, todayISO } from "@/lib/dates";
 import { formatEUR, formatNum } from "@/lib/format";
-import { carryoverFor, leaveWorkdaysIn, proRataVacation, targetHours, trackingStart as userTrackingStart, vacationBalance } from "@/lib/stats";
+import { employmentTargetHours, employmentVacationBalance, leaveWorkdaysIn, personTargetHours } from "@/lib/stats";
+import { activeEmploymentsOn, lastWorkingDay } from "@/lib/employment";
+import { companyLabel, loadEmployments } from "@/lib/people";
+import { termsOn } from "@/lib/terms";
 import { formatDate } from "@/lib/dates";
 import { UserDangerZone } from "@/components/user-danger-zone";
 import { arbzgWarnings } from "@/lib/worktime";
@@ -39,32 +42,27 @@ export default async function PersonPage({
   const yEnd = `${year}-12-31`;
 
   const showPersonnel = can(me.role, "personnel.view");
-  const [entries, leaves, workDays, firstEntry, openToken, entryCount, employments, companies] = await Promise.all([
+  const [entries, leaves, workDays, openToken, entryCount, employmentMap, companies] = await Promise.all([
     prisma.timeEntry.findMany({ where: { userId: id, date: { gte: yStart, lte: yEnd } }, include: { project: true } }),
     prisma.leaveRequest.findMany({ where: { userId: id, status: { in: ["APPROVED", "PENDING"] } } }),
     prisma.workDay.findMany({ where: { userId: id, date: { gte: yStart, lte: yEnd } } }),
-    prisma.timeEntry.findFirst({ where: { userId: id }, orderBy: { date: "asc" }, select: { date: true } }),
     prisma.authToken.findFirst({ where: { userId: id, usedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } }),
     prisma.timeEntry.count({ where: { userId: id } }),
-    showPersonnel
-      ? prisma.employment.findMany({ where: { userId: id }, include: { company: true, terms: true }, orderBy: { startDate: "desc" } })
-      : Promise.resolve([]),
+    loadEmployments([id]),
     showPersonnel ? prisma.company.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
   ]);
 
-  // Soll zählt erst ab Beginn der Erfassung (Anlage der Person bzw. erste Buchung) und höchstens bis heute.
-  const created = userTrackingStart(user);
-  const trackingStart = firstEntry && firstEntry.date < created ? firstEntry.date : created;
+  const employments = employmentMap.get(id) ?? [];
+  const exit = lastWorkingDay(employments);
+  // Soll zählt je Arbeitsverhältnis ab Eintritt bis zum letzten Arbeitstag – und höchstens bis heute.
+  const capped = (to: string) => (to < today ? to : today);
 
   let saldo = 0;
   const months = Array.from({ length: 12 }, (_, i) => addMonths(yStart, i)).map((m) => {
     const mEnd = monthEnd(m);
-    const from = m > trackingStart ? m : trackingStart;
-    const capped = user.exitDate && user.exitDate < today ? user.exitDate : today;
-    const to = mEnd < capped ? mEnd : capped;
     const inMonth = entries.filter((e) => e.date >= m && e.date <= mEnd);
     const ist = inMonth.reduce((s, e) => s + e.hours, 0);
-    const soll = from <= to ? targetHours(user.weeklyHours, from, to, leaves) : 0;
+    const soll = m <= today ? personTargetHours(employments, m, capped(mEnd), leaves) ?? 0 : 0;
     const counted = m <= today;
     if (counted) saldo += ist - soll;
     const days = (type: string) => leaves.filter((l) => l.type === type && l.status === "APPROVED").reduce((s, l) => s + leaveWorkdaysIn(l, m, mEnd), 0);
@@ -75,7 +73,19 @@ export default async function PersonPage({
     };
   });
 
-  const bal = vacationBalance(user.vacationDaysPerYear, year, leaves, carryoverFor(user, year));
+  // Saldo und Urlaubskonto je Arbeitsverhältnis, das im Jahr besteht
+  const yearEmployments = employments.filter((e) => e.startDate <= yEnd && (!e.endDate || e.endDate >= yStart));
+  const perEmployment = yearEmployments.map((e) => {
+    const ist = entries.filter((x) => x.employmentId === e.id && x.date <= today).reduce((s, x) => s + x.hours, 0);
+    const soll = yStart <= today ? employmentTargetHours(e, yStart, capped(yEnd), leaves) : 0;
+    return { e, saldo: soll === null ? null : ist - soll, bal: employmentVacationBalance(e, year, leaves) };
+  });
+  const bal = perEmployment.reduce(
+    (s, p) => ({ remaining: s.remaining + p.bal.remaining, total: s.total + p.bal.total, taken: s.taken + p.bal.taken, pending: s.pending + p.bal.pending }),
+    { remaining: 0, total: 0, taken: 0, pending: 0 },
+  );
+  const current = activeEmploymentsOn(employments, today);
+  const weeklyHours = current.reduce((s, e) => s + (termsOn(e.terms, today)?.weeklyHours ?? 0), 0);
   const sickDays = months.reduce((s, m) => s + m.sick, 0);
   const istYear = entries.reduce((s, e) => s + e.hours, 0);
 
@@ -99,7 +109,14 @@ export default async function PersonPage({
       <Link href="/mitarbeitende" className="mb-1 inline-flex min-h-9 items-center gap-1 text-[15px] text-brand-700">
         <Icon name="chevronLeft" className="h-4 w-4" /> Mitarbeitende
       </Link>
-      <PageHeader title={user.name} subtitle={`${ROLE_INFO[normalizeRole(user.role)].label} · ${formatNum(user.weeklyHours)} h/Woche · ${user.email}`}>
+      <PageHeader
+        title={user.name}
+        subtitle={[
+          ROLE_INFO[normalizeRole(user.role)].label,
+          current.length ? `${current.map(companyLabel).join(", ")} · ${formatNum(weeklyHours)} h/Woche` : "kein bestehendes Arbeitsverhältnis",
+          user.email,
+        ].join(" · ")}
+      >
         <div className="flex w-full gap-2 md:w-auto">
           <PeriodNav
             label={`Auswertung ${year}`}
@@ -117,21 +134,21 @@ export default async function PersonPage({
         </div>
       </PageHeader>
 
-      {(user.exitDate || user.anonymizedAt || !user.active) && (
+      {(exit || user.anonymizedAt || !user.active) && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white px-5 py-3 text-[15px]">
           {user.anonymizedAt ? (
             <>Diese Person wurde am {user.anonymizedAt.toLocaleDateString("de-DE")} anonymisiert. Ihre Stunden zählen weiter in den Projektkosten.</>
-          ) : user.exitDate ? (
+          ) : exit ? (
             <>
-              {user.exitDate < today ? "Ausgetreten" : "Austritt geplant"} zum <b>{formatDate(user.exitDate)}</b>
-              {user.exitDate < today ? " – kein Login mehr." : " – bis dahin normaler Zugang."}
-              {(() => {
-                const y = Number(user.exitDate.slice(0, 4));
-                const pr = proRataVacation(user.vacationDaysPerYear, y, user);
-                const b = vacationBalance(pr.days, y, leaves, carryoverFor(user, y));
+              {exit < today ? "Ausgetreten" : "Austritt geplant"} zum <b>{formatDate(exit)}</b>
+              {exit < today ? " – kein Login mehr." : " – bis dahin normaler Zugang."}
+              {employments.filter((e) => e.endDate && e.endDate.slice(0, 4) === exit.slice(0, 4)).map((e) => {
+                const y = Number(e.endDate!.slice(0, 4));
+                const b = employmentVacationBalance(e, y, leaves);
                 return (
-                  <span className="mt-1 block text-[13px] text-slate-500">
-                    Urlaub {y} anteilig (1/12-Regel, {pr.months} volle Monate): {formatNum(pr.days)} Tage
+                  <span key={e.id} className="mt-1 block text-[13px] text-slate-500">
+                    {employments.length > 1 && <>{e.company.name}: </>}
+                    Urlaub {y} anteilig (1/12-Regel): {formatNum(b.allowance)} Tage
                     {b.carryover ? ` + ${formatNum(b.carryover)} Resturlaub` : ""} · genommen/genehmigt {formatNum(b.taken)} ·{" "}
                     <b className={b.remaining < 0 ? "text-amber-700" : ""}>
                       {b.remaining < 0 ? `${formatNum(-b.remaining)} Tage zu viel genommen` : `${formatNum(b.remaining)} Tage offen (ggf. abgelten)`}
@@ -139,7 +156,7 @@ export default async function PersonPage({
                     {" "}– bitte arbeitsrechtlich prüfen (z. B. voller gesetzlicher Mindesturlaub bei Austritt in der zweiten Jahreshälfte).
                   </span>
                 );
-              })()}
+              })}
             </>
           ) : (
             <>Zugang gesperrt.</>
@@ -165,7 +182,9 @@ export default async function PersonPage({
             label: `Saldo ${year}${year === thisYear ? " bis heute" : ""}`,
             value: `${signed(saldo)} h`,
             tone: saldo < -8 || saldo > 40 ? "warn" : "good",
-            hint: "Ist minus Soll",
+            hint: perEmployment.length > 1
+              ? perEmployment.map((p) => `${companyLabel(p.e)} ${p.saldo === null ? "ohne Soll" : `${signed(p.saldo)} h`}`).join(" · ")
+              : "Ist minus Soll",
           },
           { label: `Stunden ${year}`, value: `${formatNum(istYear)} h`, hint: showCosts ? formatEUR(months.reduce((s, m) => s + m.cost, 0)) : undefined },
           {

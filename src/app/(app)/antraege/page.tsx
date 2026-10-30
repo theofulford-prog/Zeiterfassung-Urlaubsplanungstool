@@ -3,7 +3,8 @@ import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { formatRange, todayISO } from "@/lib/dates";
 import { formatNum } from "@/lib/format";
-import { carryoverFor, vacationBalance } from "@/lib/stats";
+import { employmentVacationBalance } from "@/lib/stats";
+import { loadEmployments } from "@/lib/people";
 import { cancelLeave, createLeaveForUser, decideLeave } from "@/app/actions/leave";
 import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -35,6 +36,8 @@ export default async function AntraegePage() {
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
+  const employmentMap = await loadEmployments([...new Set(pending.map((l) => l.userId))]);
+
   // Wer ist im gleichen Zeitraum schon weg?
   const approved = await prisma.leaveRequest.findMany({ where: { status: "APPROVED", endDate: { gte: today } }, include: { user: true } });
 
@@ -48,7 +51,12 @@ export default async function AntraegePage() {
           {pending.map((l) => {
             // Bei Anträgen über den Jahreswechsel das Konto beider Jahre zeigen.
             const years = [...new Set([Number(l.startDate.slice(0, 4)), Number(l.endDate.slice(0, 4))])];
-            const balances = years.map((y) => ({ y, b: vacationBalance(l.user.vacationDaysPerYear, y, l.user.leaveRequests, carryoverFor(l.user, y)) }));
+            // Je Arbeitsverhältnis, das im Antragszeitraum besteht, ein eigenes Konto
+            const emps = (employmentMap.get(l.userId) ?? []).filter((e) => e.startDate <= l.endDate && (!e.endDate || e.endDate >= l.startDate));
+            const balances = emps.flatMap((e) => years.map((y) => ({
+              label: [emps.length > 1 ? e.company.shortName ?? e.company.name : null, years.length > 1 ? String(y) : null].filter(Boolean).join(" "),
+              b: employmentVacationBalance(e, y, l.user.leaveRequests),
+            })));
             const overlaps = approved.filter((a) => a.userId !== l.userId && a.startDate <= l.endDate && a.endDate >= l.startDate);
             return (
               <li key={l.id} className="grid gap-3 px-4 py-4 md:flex md:items-center md:gap-4 md:px-5">
@@ -61,7 +69,9 @@ export default async function AntraegePage() {
                   </p>
                   {l.type === "VACATION" && (
                     <p className="text-[13px] text-slate-500">
-                      Danach noch {balances.map(({ y, b }) => `${formatNum(b.remaining)} Tage${balances.length > 1 ? ` (${y})` : ""}`).join(", ")} übrig
+                      {balances.length === 0
+                        ? "Kein Arbeitsverhältnis im Zeitraum"
+                        : `Danach noch ${balances.map(({ label, b }) => `${formatNum(b.remaining)} Tage${label ? ` (${label})` : ""}`).join(", ")} übrig`}
                     </p>
                   )}
                   {l.note && (showReasons || l.type !== "SICK") && <p className="text-[13px] text-slate-500">„{l.note}“</p>}

@@ -3,10 +3,13 @@ import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import {
-  addDays, addMonths, daysInRange, isWorkday, formatDateShort, isValidISO, monthEnd, monthLabel, monthLabelShort, monthStart, startOfWeek, todayISO,
+  addDays, addMonths, daysInRange, isWorkday, isWorkdayFor, formatDateShort, isValidISO, monthEnd, monthLabel, monthLabelShort, monthStart, startOfWeek, todayISO,
 } from "@/lib/dates";
 import { formatEUR, formatHours, formatNum, formatPct, LEAVE_TYPES } from "@/lib/format";
-import { employedOn, leaveWorkdaysIn, targetHoursFor, trackingStart } from "@/lib/stats";
+import { leaveWorkdaysIn, personTargetHours } from "@/lib/stats";
+import { activeEmploymentsOn } from "@/lib/employment";
+import { loadEmployments } from "@/lib/people";
+import { termsOn } from "@/lib/terms";
 import { PageHeader } from "@/components/page-header";
 import { PeriodNav } from "@/components/period-nav";
 import { StatStrip } from "@/components/stat-strip";
@@ -41,7 +44,7 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
   const [rawUsers, entries, chartEntries, cumEntries, leaves, pending, upcoming] = await Promise.all([
     // Alle, die im Monat beschäftigt waren – auch wer inzwischen ausgetreten ist
     prisma.user.findMany({
-      where: { tracksTime: true, anonymizedAt: null, OR: [{ active: true }, { exitDate: { gte: start } }] },
+      where: { tracksTime: true, anonymizedAt: null },
       orderBy: { name: "asc" },
     }),
     prisma.timeEntry.findMany({ where: { date: { gte: start, lte: end } }, include: { project: true } }),
@@ -60,19 +63,28 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
   const cumCost = new Map<string, number>();
   for (const e of cumEntries) cumCost.set(e.projectId, (cumCost.get(e.projectId) ?? 0) + v(e));
 
-  // Nur wer im gewählten Monat beschäftigt war (Eintritt bis Austritt)
-  const users = rawUsers.filter((u) => trackingStart(u) <= end && (!u.exitDate || u.exitDate >= start));
+  // Nur wer im gewählten Monat beschäftigt war – über irgendein Arbeitsverhältnis (Eintritt bis letzter Arbeitstag)
+  const employmentMap = await loadEmployments(rawUsers.map((u) => u.id));
+  const empsOf = (userId: string) => employmentMap.get(userId) ?? [];
+  const users = rawUsers.filter((u) => empsOf(u.id).some((e) => e.startDate <= end && (!e.endDate || e.endDate >= start)));
+  // Arbeitstag nach Vertrag: mindestens ein Arbeitsverhältnis besteht und sieht den Wochentag als Arbeitstag vor
+  const worksOn = (userId: string, d: string) =>
+    activeEmploymentsOn(empsOf(userId), d).some((e) => isWorkdayFor(d, termsOn(e.terms, d)?.workDays ?? []));
   const booked = new Set(recentEntries.map((e) => `${e.userId}|${e.date}`));
   const missing = users
     .map((u) => ({
       u,
       days: checkDays.filter(
-        (d) => employedOn(u, d) && u.active && !booked.has(`${u.id}|${d}`) && !recentLeaves.some((l) => l.userId === u.id && l.startDate <= d && l.endDate >= d),
+        (d) => worksOn(u.id, d) && u.active && !booked.has(`${u.id}|${d}`) && !recentLeaves.some((l) => l.userId === u.id && l.startDate <= d && l.endDate >= d),
       ),
     }))
     .filter((m) => m.days.length > 0)
     .sort((a, b) => b.days.length - a.days.length);
-  const noRate = showCosts ? users.filter((u) => !u.hourlyCost) : [];
+  // Fehlender Kostensatz: ein bestehendes Arbeitsverhältnis, dessen aktuelle Konditionen keinen Satz haben
+  const rateDay = end < today ? end : today;
+  const noRate = showCosts
+    ? users.filter((u) => activeEmploymentsOn(empsOf(u.id), rateDay).some((e) => !termsOn(e.terms, rateDay)?.costRate))
+    : [];
 
   const totalHours = entries.reduce((s, e) => s + e.hours, 0);
   const totalCost = entries.reduce((s, e) => s + v(e), 0);
@@ -83,7 +95,7 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
     const ist = mine.reduce((s, e) => s + e.hours, 0);
     const istBis = mine.filter((e) => e.date <= targetEnd).reduce((s, e) => s + e.hours, 0);
     const myLeaves = leaves.filter((l) => l.userId === u.id);
-    const soll = targetHoursFor(u, start, targetEnd, myLeaves);
+    const soll = personTargetHours(empsOf(u.id), start, targetEnd, myLeaves) ?? 0;
     const absentDays = myLeaves.reduce((s, l) => s + leaveWorkdaysIn(l, start, end), 0);
     const perProject = new Map<string, number>();
     for (const e of mine) perProject.set(e.project.name, (perProject.get(e.project.name) ?? 0) + e.hours);

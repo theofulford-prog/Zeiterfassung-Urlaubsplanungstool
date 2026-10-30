@@ -43,3 +43,9 @@ export function resolveEmployment<T extends Span>(emps: readonly T[], date: stri
 export function hasAccessOn(user: { accessWithoutEmployment: boolean }, emps: readonly Span[], date: string): boolean {
   return user.accessWithoutEmployment || emps.some((e) => !e.endDate || e.endDate >= date);
 }
+
+/** Letzter Arbeitstag der Person über alle Arbeitsverhältnisse – nur wenn jedes ein Ende hat, sonst null. */
+export function lastWorkingDay(emps: readonly Span[]): string | null {
+  if (emps.length === 0 || emps.some((e) => !e.endDate)) return null;
+  return emps.map((e) => e.endDate!).sort()[emps.length - 1];
+}

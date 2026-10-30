@@ -2,7 +2,8 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatRange, todayISO } from "@/lib/dates";
 import { formatNum } from "@/lib/format";
-import { carryoverFor, vacationBalance } from "@/lib/stats";
+import { employmentVacationBalance } from "@/lib/stats";
+import { loadEmployments } from "@/lib/people";
 import { LeaveFields } from "@/components/leave-fields";
 import { cancelLeave, requestLeave } from "@/app/actions/leave";
 import { ActionForm } from "@/components/action-form";
@@ -17,8 +18,14 @@ export default async function UrlaubPage() {
   const user = await requireUser();
   const today = todayISO();
   const year = Number(today.slice(0, 4));
-  const leaves = await prisma.leaveRequest.findMany({ where: { userId: user.id }, orderBy: { startDate: "desc" } });
-  const bal = vacationBalance(user.vacationDaysPerYear, year, leaves, carryoverFor(user, year));
+  const [leaves, employmentMap] = await Promise.all([
+    prisma.leaveRequest.findMany({ where: { userId: user.id }, orderBy: { startDate: "desc" } }),
+    loadEmployments([user.id]),
+  ]);
+  // Ein Urlaubskonto je Arbeitsverhältnis, das in diesem Jahr besteht
+  const accounts = (employmentMap.get(user.id) ?? [])
+    .filter((e) => e.startDate <= `${year}-12-31` && (!e.endDate || e.endDate >= `${year}-01-01`))
+    .map((e) => ({ id: e.id, company: e.company.name, bal: employmentVacationBalance(e, year, leaves) }));
   const upcoming = leaves.filter((l) => l.endDate >= today).reverse();
   const past = leaves.filter((l) => l.endDate < today);
 
@@ -26,14 +33,22 @@ export default async function UrlaubPage() {
     <>
       <PageHeader title="Mein Urlaub" subtitle={`Urlaubskonto ${year}`} />
       <div className="grid gap-3 md:gap-4">
-        <StatStrip
-          items={[
-            { label: "Verbleibend", value: `${formatNum(bal.remaining)} Tage`, tone: bal.remaining < 0 ? "warn" : "good" },
-            { label: "Anspruch", value: `${formatNum(bal.total)} Tage`, hint: bal.carryover ? `inkl. ${formatNum(bal.carryover)} Resturlaub` : undefined },
-            { label: "Genommen", value: `${formatNum(bal.taken)} Tage` },
-            { label: "Beantragt", value: `${formatNum(bal.pending)} Tage`, tone: bal.pending ? "warn" : undefined },
-          ]}
-        />
+        {accounts.length === 0 && (
+          <p className="card px-4 py-5 text-[15px] text-slate-500">Für {year} ist kein Arbeitsverhältnis erfasst – daher gibt es kein Urlaubskonto.</p>
+        )}
+        {accounts.map(({ id, company, bal }) => (
+          <div key={id} className="grid gap-1.5">
+            {accounts.length > 1 && <h2 className="px-1 text-[13px] font-semibold text-slate-500">{company}</h2>}
+            <StatStrip
+              items={[
+                { label: "Verbleibend", value: `${formatNum(bal.remaining)} Tage`, tone: bal.remaining < 0 ? "warn" : "good" },
+                { label: "Anspruch", value: `${formatNum(bal.total)} Tage`, hint: bal.carryover ? `inkl. ${formatNum(bal.carryover)} Resturlaub` : undefined },
+                { label: "Genommen", value: `${formatNum(bal.taken)} Tage` },
+                { label: "Beantragt", value: `${formatNum(bal.pending)} Tage`, tone: bal.pending ? "warn" : undefined },
+              ]}
+            />
+          </div>
+        ))}
 
         <Disclosure label="Urlaub oder Krankheit eintragen" title="Abwesenheit eintragen">
           <p className="mb-4 text-[13px] text-slate-500">
