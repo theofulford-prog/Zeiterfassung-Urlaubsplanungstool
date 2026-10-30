@@ -106,7 +106,8 @@ model WorkDay {
   date         String
   /// "HH:MM"
   start        String
-  end          String
+  /// leer, solange der Arbeitstag noch läuft (Stempeluhr)
+  end          String?
   breakMinutes Int      @default(0)
   updatedAt    DateTime @updatedAt
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -148,6 +148,10 @@ body {
   @apply btn bg-brand-600 text-onaccent hover:brightness-110 active:brightness-95;
 }
 /* Getönt: für wiederkehrende Aktionen in Listen */
+/* Stoppen/Feierabend: in beiden Modi gleiches, kräftiges Rot (Kontrast zu Weiß > 6:1) */
+@utility btn-stop {
+  @apply btn bg-[#b42318] text-onaccent hover:brightness-110 active:brightness-95;
+}
 @utility btn-tinted {
   @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100;
 }

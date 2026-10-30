@@ -1,72 +1,83 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatDate, todayISO } from "@/lib/dates";
+import { formatRange, todayISO } from "@/lib/dates";
 import { formatNum } from "@/lib/format";
 import { carryoverFor, vacationBalance } from "@/lib/stats";
 import { LeaveFields } from "@/components/leave-fields";
 import { cancelLeave, requestLeave } from "@/app/actions/leave";
 import { ActionForm } from "@/components/action-form";
-import { PageHeader, Stat } from "@/components/page-header";
+import { Disclosure } from "@/components/disclosure";
+import { PageHeader } from "@/components/page-header";
+import { StatStrip } from "@/components/stat-strip";
 import { StatusBadge, TypeLabel } from "@/components/leave-badges";
+
+type Leave = Awaited<ReturnType<typeof prisma.leaveRequest.findMany>>[number];
 
 export default async function UrlaubPage() {
   const user = await requireUser();
   const today = todayISO();
   const year = Number(today.slice(0, 4));
-  const leaves = await prisma.leaveRequest.findMany({
-    where: { userId: user.id },
-    orderBy: { startDate: "desc" },
-  });
+  const leaves = await prisma.leaveRequest.findMany({ where: { userId: user.id }, orderBy: { startDate: "desc" } });
   const bal = vacationBalance(user.vacationDaysPerYear, year, leaves, carryoverFor(user, year));
+  const upcoming = leaves.filter((l) => l.endDate >= today).reverse();
+  const past = leaves.filter((l) => l.endDate < today);
 
   return (
     <>
       <PageHeader title="Mein Urlaub" subtitle={`Urlaubskonto ${year}`} />
-      <div className="mb-6 grid gap-4 sm:grid-cols-4">
-        <Stat label="Anspruch" value={`${formatNum(bal.total)} Tage`} hint={bal.carryover ? `${bal.allowance} + ${formatNum(bal.carryover)} Resturlaub Vorjahr` : undefined} />
-        <Stat label="Genommen / genehmigt" value={`${formatNum(bal.taken)} Tage`} />
-        <Stat label="Beantragt (offen)" value={`${formatNum(bal.pending)} Tage`} />
-        <Stat label="Verbleibend" value={`${formatNum(bal.remaining)} Tage`} tone={bal.remaining < 0 ? "warn" : "good"} />
+      <div className="grid gap-3 md:gap-4">
+        <StatStrip
+          items={[
+            { label: "Verbleibend", value: `${formatNum(bal.remaining)} Tage`, tone: bal.remaining < 0 ? "warn" : "good" },
+            { label: "Anspruch", value: `${formatNum(bal.total)} Tage`, hint: bal.carryover ? `inkl. ${formatNum(bal.carryover)} Resturlaub` : undefined },
+            { label: "Genommen", value: `${formatNum(bal.taken)} Tage` },
+            { label: "Beantragt", value: `${formatNum(bal.pending)} Tage`, tone: bal.pending ? "warn" : undefined },
+          ]}
+        />
+
+        <Disclosure label="Urlaub oder Krankheit eintragen" title="Abwesenheit eintragen">
+          <p className="mb-4 text-[13px] text-slate-500">
+            Urlaub gibt die Geschäftsführung frei. Krankmeldungen gelten sofort – wirst du im Urlaub krank, trag es ein, die Tage werden gutgeschrieben.
+            Wochenenden und Feiertage (NRW) zählen nicht mit.
+          </p>
+          <ActionForm action={requestLeave} submitLabel="Eintragen" className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_2fr]">
+            <LeaveFields />
+          </ActionForm>
+        </Disclosure>
+
+        <LeaveList title="Anstehend" leaves={upcoming} empty="Nichts geplant." />
+        {past.length > 0 && <LeaveList title="Vergangen" leaves={past} muted />}
       </div>
-
-      <section className="card mb-6 p-5">
-        <h2 className="mb-1 font-semibold">Abwesenheit eintragen</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          Urlaub wird von der Geschäftsführung freigegeben. Krankmeldungen gelten sofort – wirst du im Urlaub krank, trag es einfach ein, die Tage werden dir gutgeschrieben.
-          Wochenenden und Feiertage (NRW) werden nicht mitgezählt.
-        </p>
-        <ActionForm action={requestLeave} submitLabel="Eintragen" className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_2fr]">
-          <LeaveFields />
-        </ActionForm>
-      </section>
-
-      <section className="card overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr><th>Zeitraum</th><th>Art</th><th className="text-right!">Arbeitstage</th><th>Status</th><th>Notiz</th><th></th></tr>
-          </thead>
-          <tbody>
-            {leaves.map((l) => (
-              <tr key={l.id}>
-                <td className="whitespace-nowrap">{formatDate(l.startDate)} – {formatDate(l.endDate)}</td>
-                <td><TypeLabel type={l.type} /></td>
-                <td className="text-right tabular-nums">{formatNum(l.days)}{l.halfDay && <span className="ml-1 text-xs text-slate-400">(½)</span>}</td>
-                <td><StatusBadge status={l.status} /></td>
-                <td className="text-slate-500">{l.note}</td>
-                <td className="text-right">
-                  {l.status === "PENDING" && (
-                    <form action={cancelLeave}>
-                      <input type="hidden" name="id" value={l.id} />
-                      <button className="btn-danger px-2! py-1! text-xs">Zurückziehen</button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {leaves.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400">Noch keine Einträge.</td></tr>}
-          </tbody>
-        </table>
-      </section>
     </>
+  );
+}
+
+function LeaveList({ title, leaves, empty, muted }: { title: string; leaves: Leave[]; empty?: string; muted?: boolean }) {
+  return (
+    <section>
+      <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-slate-500">{title}</h2>
+      <ul className="card divide-y divide-slate-100">
+        {leaves.map((l) => (
+          <li key={l.id} className={`flex items-center gap-3 px-4 py-3 ${muted ? "opacity-70" : ""}`}>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-medium tabular-nums">{formatRange(l.startDate, l.endDate)}</p>
+              <p className="text-[13px] text-slate-500">
+                <TypeLabel type={l.type} /> · {formatNum(l.days)} {l.days === 1 ? "Tag" : "Tage"}
+                {l.halfDay && " (halber Tag)"}
+                {l.note && ` · ${l.note}`}
+              </p>
+            </div>
+            <StatusBadge status={l.status} />
+            {l.status === "PENDING" && (
+              <form action={cancelLeave}>
+                <input type="hidden" name="id" value={l.id} />
+                <button className="btn-danger min-h-10 px-2! text-[13px]">Zurückziehen</button>
+              </form>
+            )}
+          </li>
+        ))}
+        {leaves.length === 0 && <li className="px-4 py-6 text-center text-[15px] text-slate-500">{empty}</li>}
+      </ul>
+    </section>
   );
 }

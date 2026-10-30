@@ -7,7 +7,10 @@ import {
 } from "@/lib/dates";
 import { formatEUR, formatHours, formatNum, formatPct, LEAVE_TYPES } from "@/lib/format";
 import { employedOn, leaveWorkdaysIn, targetHoursFor, trackingStart } from "@/lib/stats";
-import { PageHeader, Stat } from "@/components/page-header";
+import { PageHeader } from "@/components/page-header";
+import { PeriodNav } from "@/components/period-nav";
+import { StatStrip } from "@/components/stat-strip";
+import { Icon } from "@/components/icons";
 import { StackedCostChart, type StackedRow } from "@/components/charts";
 import { BudgetBar } from "@/components/budget-bar";
 
@@ -130,12 +133,20 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <PageHeader title="Übersicht" subtitle={monthLabel(start)}>
-        <Link className="btn-secondary" href={`/uebersicht?monat=${addMonths(start, -1)}`}>←</Link>
-        <Link className="btn-ghost" href="/uebersicht">Aktueller Monat</Link>
-        <Link className="btn-secondary" href={`/uebersicht?monat=${addMonths(start, 1)}`}>→</Link>
+      <PageHeader title="Übersicht">
+        <div className="flex w-full gap-2 md:w-auto">
+        <PeriodNav
+          label={monthLabel(start)}
+          prevHref={`/uebersicht?monat=${addMonths(start, -1)}`}
+          nextHref={`/uebersicht?monat=${addMonths(start, 1)}`}
+          todayHref={isCurrent ? undefined : "/uebersicht"}
+          prevLabel="Voriger Monat"
+          nextLabel="Nächster Monat"
+        />
         <details className="relative">
-          <summary className="btn-secondary cursor-pointer list-none">Export ▾</summary>
+          <summary className="card flex h-full min-h-[52px] w-[52px] cursor-pointer list-none items-center justify-center text-brand-700" aria-label="Exportieren" title="Exportieren">
+            <Icon name="download" />
+          </summary>
           <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg">
             {[
               ["zeiten", showCosts ? "Projektzeiten & Kosten" : "Projektzeiten"],
@@ -148,10 +159,11 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
             ))}
           </div>
         </details>
+        </div>
       </PageHeader>
 
       {(missing.length > 0 || noRate.length > 0) && (
-        <section className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+        <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] text-amber-900 md:mb-6 md:px-5">
           {missing.length > 0 && (
             <p>
               <b>Fehlende Buchungen</b> (letzte 10 Arbeitstage):{" "}
@@ -172,31 +184,30 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
         </section>
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Erfasste Stunden" value={formatHours(totalHours)} hint={`${users.length} Personen mit Zeiterfassung`} />
-        {showCosts ? (
-          <Stat label="Personalkosten" value={formatEUR(totalCost)} hint="Stunden × interner Stundensatz" />
-        ) : (
-          <Stat label="Bebuchte Projekte" value={String(projRows.length)} hint="mit Stunden in diesem Monat" />
-        )}
-        <Stat
-          label={`Ø Auslastung${isCurrent ? " (bis heute)" : ""}`}
-          value={formatPct(avgUtil)}
-          hint={overloaded ? `${overloaded} Person(en) über 110 %` : "niemand über 110 %"}
-          tone={overloaded ? "warn" : undefined}
-        />
-        <Link href="/antraege" className="block">
-          <Stat label="Offene Urlaubsanträge" value={String(pending)} hint="zur Freigabe →" tone={pending ? "warn" : undefined} />
-        </Link>
-      </div>
+      <StatStrip
+        className="mb-4 md:mb-6"
+        items={[
+          { label: "Erfasste Stunden", value: formatHours(totalHours), hint: `${users.length} Personen` },
+          showCosts
+            ? { label: "Personalkosten", value: formatEUR(totalCost), hint: "Stunden × Kostensatz" }
+            : { label: "Bebuchte Projekte", value: String(projRows.length), hint: "in diesem Monat" },
+          {
+            label: `Ø Auslastung${isCurrent ? " bis heute" : ""}`,
+            value: formatPct(avgUtil),
+            hint: overloaded ? `${overloaded} über 110 %` : "niemand über 110 %",
+            tone: overloaded ? "warn" : undefined,
+          },
+          { label: "Offene Anträge", value: String(pending), hint: "zur Freigabe →", tone: pending ? "warn" : undefined, href: "/antraege" },
+        ]}
+      />
 
-      <div className="mb-6 grid gap-6 lg:grid-cols-3">
-        <section className="card p-5 lg:col-span-2">
+      <div className="mb-4 grid gap-4 md:mb-6 md:gap-6 lg:grid-cols-3">
+        <section className="card p-4 md:p-5 lg:col-span-2">
           <h2 className="font-semibold">{showCosts ? "Personalkosten je Projekt" : "Stunden je Projekt"}</h2>
           <p className="mb-3 text-xs text-slate-500">Letzte 12 Monate · die 7 {showCosts ? "kostenintensivsten" : "zeitintensivsten"} Projekte, Rest als „Sonstige“</p>
           {series.length ? <StackedCostChart data={chartData} series={series} unit={showCosts ? "eur" : "hours"} /> : <p className="py-16 text-center text-sm text-slate-400">Noch keine Daten.</p>}
         </section>
-        <section className="card p-5">
+        <section className="card p-4 md:p-5">
           <div className="mb-3 flex items-baseline justify-between">
             <h2 className="font-semibold">Abwesend diese Woche</h2>
             <Link href="/kalender" className="text-xs text-brand-700 hover:underline">Kalender →</Link>
@@ -215,11 +226,30 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
         </section>
       </div>
 
-      <section className="card mb-6 overflow-x-auto">
-        <div className="flex items-baseline justify-between px-5 pt-4 pb-2">
+      <section className="card mb-4 overflow-hidden md:mb-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-1 px-4 pt-4 pb-2 md:px-5">
           <h2 className="font-semibold">Auslastung je Person</h2>
           <p className="text-xs text-slate-500">Soll{isCurrent ? " bis heute" : ""} = Arbeitstage × Wochenstunden/5, abzgl. Urlaub/Krankheit</p>
         </div>
+        {/* iPhone: Liste */}
+        <ul className="divide-y divide-slate-100 md:hidden">
+          {people.map(({ u, ist, soll, util, absentDays, cost }) => (
+            <li key={u.id}>
+              <Link href={`/mitarbeitende/${u.id}`} className="grid gap-1.5 px-4 py-3 active:bg-slate-50">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="truncate text-[15px] font-medium">{u.name}</span>
+                  <span className="shrink-0 text-[13px] text-slate-500 tabular-nums">
+                    {formatNum(ist)} / {formatNum(soll)} h{showCosts ? ` · ${formatEUR(cost)}` : ""}
+                  </span>
+                </div>
+                <UtilBar util={util} />
+                {absentDays > 0 && <span className="text-[12px] text-slate-500">{formatNum(absentDays)} Tage abwesend</span>}
+              </Link>
+            </li>
+          ))}
+          {people.length === 0 && <li className="px-4 py-6 text-center text-[15px] text-slate-500">Niemand mit Zeiterfassung in diesem Monat.</li>}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
         <table className="data-table min-w-[900px]">
           <thead>
             <tr>
@@ -246,19 +276,20 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       {categories.length > 0 && (
-        <section className="card mb-6 p-5">
+        <section className="card mb-4 p-4 md:mb-6 md:p-5">
           <h2 className="mb-3 font-semibold">Wofür ging die Zeit drauf? <span className="text-sm font-normal text-slate-500">· {monthLabel(start)} nach Kategorie</span></h2>
           <div className="space-y-2">
             {categories.map(([cat, c]) => (
-              <div key={cat} className="grid grid-cols-[8rem_1fr_6rem_6rem] items-center gap-3 text-sm">
+              <div key={cat} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm md:grid-cols-[8rem_1fr_6rem_6rem]">
                 <span className="truncate font-medium">{cat}</span>
-                <div className="h-2.5 rounded-full bg-slate-100">
+                <div className="order-last col-span-2 h-2.5 rounded-full bg-slate-100 md:order-none md:col-span-1">
                   <div className="h-2.5 rounded-full bg-brand-500" style={{ width: `${totalCost ? (c.cost / totalCost) * 100 : 0}%` }} />
                 </div>
-                <span className="text-right text-slate-500 tabular-nums">{showCosts ? `${formatNum(c.hours)} h` : ""}</span>
+                <span className="hidden text-right text-slate-500 tabular-nums md:block">{showCosts ? `${formatNum(c.hours)} h` : ""}</span>
                 <span className="text-right tabular-nums">{fmtV(c.cost)} <span className="text-xs text-slate-400">({formatPct(totalCost ? c.cost / totalCost : 0)})</span></span>
               </div>
             ))}
@@ -266,8 +297,29 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
         </section>
       )}
 
-      <section className="card overflow-x-auto">
-        <h2 className="px-5 pt-4 pb-2 font-semibold">Projekte im {monthLabel(start)}</h2>
+      <section className="card overflow-hidden">
+        <h2 className="px-4 pt-4 pb-2 font-semibold md:px-5">Projekte im {monthLabel(start)}</h2>
+        <ul className="divide-y divide-slate-100 md:hidden">
+          {projRows.map((p) => {
+            const cum = cumCost.get(p.id) ?? 0;
+            return (
+              <li key={p.id}>
+                <Link href={`/projekte/${p.id}`} className="grid gap-1.5 px-4 py-3 active:bg-slate-50">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 text-[15px] leading-snug font-medium">{p.name}</span>
+                    <span className="shrink-0 text-[14px] tabular-nums">{showCosts ? formatEUR(p.cost) : `${formatNum(p.hours)} h`}</span>
+                  </div>
+                  <span className="text-[12px] text-slate-500">
+                    {p.category}{showCosts ? ` · ${formatNum(p.hours)} h · gesamt ${formatEUR(cum)}` : ""}
+                  </span>
+                  {showCosts && p.budget ? <BudgetBar used={cum} budget={p.budget} /> : null}
+                </Link>
+              </li>
+            );
+          })}
+          {projRows.length === 0 && <li className="px-4 py-6 text-center text-[15px] text-slate-500">Keine Buchungen in diesem Monat.</li>}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
         <table className="data-table min-w-[680px]">
           <thead>
             <tr>
@@ -296,6 +348,7 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
             {projRows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400">Keine Buchungen in diesem Monat.</td></tr>}
           </tbody>
         </table>
+        </div>
       </section>
     </>
   );

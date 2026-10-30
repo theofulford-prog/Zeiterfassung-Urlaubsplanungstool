@@ -12,7 +12,7 @@ export function WorkDayRow({
   muted: boolean;
   locked: boolean;
   booked: number;
-  initial?: { start: string; end: string; breakMinutes: number };
+  initial?: { start: string; end: string | null; breakMinutes: number };
   absence?: string;
 }) {
   const [state, action, pending] = useActionState(saveWorkDay, undefined);
@@ -25,7 +25,7 @@ export function WorkDayRow({
     <tr className={muted ? "bg-slate-50/60 text-slate-500" : ""}>
       <td className="whitespace-nowrap">{label}{absence && <span className="ml-2 text-xs text-sky-600">{absence}</span>}</td>
       <td><input form={formId} name="start" type="time" defaultValue={initial?.start} disabled={locked} className="input w-28! py-1!" /></td>
-      <td><input form={formId} name="end" type="time" defaultValue={initial?.end} disabled={locked} className="input w-28! py-1!" /></td>
+      <td><input form={formId} name="end" type="time" defaultValue={initial?.end ?? undefined} disabled={locked} className="input w-28! py-1!" /></td>
       <td>
         <input form={formId} name="breakMinutes" inputMode="numeric" defaultValue={initial?.breakMinutes ?? ""} placeholder="0" disabled={locked} className="input w-20! py-1!" />
       </td>

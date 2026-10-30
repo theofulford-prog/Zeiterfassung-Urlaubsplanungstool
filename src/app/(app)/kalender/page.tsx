@@ -2,12 +2,14 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
-  addDays, addMonths, daysInRange, formatDateShort, holidayName, isValidISO, isWeekend, isoWeek, monthEnd, monthLabel, monthStart, startOfWeek,
+  addDays, addMonths, daysInRange, formatDateShort, formatRange, holidayName, isValidISO, isWeekend, isoWeek, monthEnd, monthLabel, monthStart, startOfWeek,
   todayISO, weekdayShort,
 } from "@/lib/dates";
 import { LEAVE_TYPES } from "@/lib/format";
 import { can } from "@/lib/permissions";
 import { PageHeader } from "@/components/page-header";
+import { PeriodNav } from "@/components/period-nav";
+import { StatusBadge } from "@/components/leave-badges";
 
 export default async function KalenderPage({ searchParams }: { searchParams: Promise<{ monat?: string; ansicht?: string }> }) {
   const me = await requireUser();
@@ -29,32 +31,42 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
     }),
   ]);
 
+  const monthList = leaves
+    .filter((l) => l.startDate <= end && l.endDate >= start && users.some((u) => u.id === l.userId))
+    .map((l) => ({ ...l, name: users.find((u) => u.id === l.userId)!.name }))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.name.localeCompare(b.name));
+
   const cell = (userId: string, d: string) =>
     leaves.find((l) => l.userId === userId && l.startDate <= d && l.endDate >= d);
   const absentToday = new Set(leaves.filter((l) => l.status === "APPROVED" && l.startDate <= today && l.endDate >= today).map((l) => l.userId));
 
   return (
     <>
-      <PageHeader title="Teamkalender" subtitle={monthLabel(start)}>
-        <div className="mr-2 flex rounded-[9px] bg-slate-100 p-0.5 text-[13px]" role="tablist" aria-label="Ansicht">
+      <PageHeader title="Teamkalender">
+        <div className="flex w-full rounded-[9px] bg-slate-100 p-0.5 text-[13px] md:w-auto" role="tablist" aria-label="Ansicht">
           {(["monat", "zeitleiste"] as const).map((v) => (
             <Link
               key={v}
               href={`/kalender?ansicht=${v}&monat=${start}`}
               role="tab"
               aria-selected={view === v}
-              className={`min-w-24 rounded-[7px] px-3 py-1.5 text-center font-medium transition ${view === v ? "bg-white text-slate-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]" : "text-slate-600 hover:text-slate-900"}`}
+              className={`min-h-9 flex-1 rounded-[7px] px-3 py-2 text-center font-medium transition md:min-w-24 md:flex-none ${view === v ? "bg-white text-slate-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]" : "text-slate-600 hover:text-slate-900"}`}
             >
               {v === "monat" ? "Monat" : "Zeitleiste"}
             </Link>
           ))}
         </div>
-        <Link className="btn-secondary" href={`/kalender?ansicht=${view}&monat=${addMonths(start, -1)}`} aria-label="Vormonat">←</Link>
-        <Link className="btn-ghost" href={`/kalender?ansicht=${view}`}>Heute</Link>
-        <Link className="btn-secondary" href={`/kalender?ansicht=${view}&monat=${addMonths(start, 1)}`} aria-label="Nächster Monat">→</Link>
+        <PeriodNav
+          label={monthLabel(start)}
+          prevHref={`/kalender?ansicht=${view}&monat=${addMonths(start, -1)}`}
+          nextHref={`/kalender?ansicht=${view}&monat=${addMonths(start, 1)}`}
+          todayHref={today >= start && today <= end ? undefined : `/kalender?ansicht=${view}`}
+          prevLabel="Voriger Monat"
+          nextLabel="Nächster Monat"
+        />
       </PageHeader>
 
-      <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-600">
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 px-1 text-xs text-slate-600">
         <Legend cls={view === "monat" ? "border-l-[3px] border-sky-500 bg-sky-100" : "bg-sky-500"} label={isAdmin ? "Urlaub" : "Abwesend"} />
         {view === "monat" ? (
           <Legend cls="border border-dashed border-sky-500 bg-white" label="Urlaub beantragt (noch nicht genehmigt)" />
@@ -67,6 +79,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
       </div>
 
       {view === "monat" ? (
+        <>
         <MonthGrid
           from={gridStart}
           to={gridEnd}
@@ -76,6 +89,25 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
           meId={me.id}
           leaves={leaves.map((l) => ({ ...l, name: users.find((u) => u.id === l.userId)?.name ?? "?" }))}
         />
+        {/* Auf dem iPhone zusätzlich als gut lesbare Liste */}
+        <section className="mt-4 md:hidden">
+          <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-slate-500">Abwesenheiten im {monthLabel(start)}</h2>
+          <ul className="card divide-y divide-slate-100">
+            {monthList.map((l) => (
+              <li key={l.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className={`text-[15px] ${l.userId === me.id ? "font-semibold" : "font-medium"}`}>{l.name}</p>
+                  <p className="text-[13px] text-slate-500 tabular-nums">
+                    {formatRange(l.startDate, l.endDate)} · {isAdmin ? LEAVE_TYPES[l.type] : "abwesend"}
+                  </p>
+                </div>
+                {l.status === "PENDING" && <StatusBadge status={l.status} />}
+              </li>
+            ))}
+            {monthList.length === 0 && <li className="px-4 py-6 text-center text-[15px] text-slate-500">In diesem Monat ist niemand abwesend.</li>}
+          </ul>
+        </section>
+        </>
       ) : (
       <div className="card overflow-x-auto">
         <table className="w-full border-collapse text-xs">

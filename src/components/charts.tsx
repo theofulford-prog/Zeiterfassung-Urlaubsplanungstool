@@ -26,7 +26,13 @@ function useTheme() {
 }
 
 const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-const compactEur = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 1000)} T€` : `${Math.round(v)} €`);
+// Achsenbeschriftung: unter 10.000 € mit einer Nachkommastelle, damit keine Werte doppelt erscheinen
+const compactEur = (v: number) =>
+  Math.abs(v) >= 10000
+    ? `${Math.round(v / 1000)} T€`
+    : Math.abs(v) >= 1000
+      ? `${(v / 1000).toLocaleString("de-DE", { maximumFractionDigits: 1 })} T€`
+      : `${Math.round(v)} €`;
 
 const tooltipStyle = (t: typeof LIGHT) => ({
   contentStyle: { borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, boxShadow: "0 6px 20px rgba(0,0,0,.12)" },

@@ -3,13 +3,16 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import { can, canManageUser, ROLE_INFO, normalizeRole } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
-import { addMonths, isWorkday, monthEnd, monthLabel, todayISO } from "@/lib/dates";
+import { addMonths, isWorkday, monthEnd, monthLabel, monthLabelShort, todayISO } from "@/lib/dates";
 import { formatEUR, formatNum } from "@/lib/format";
 import { carryoverFor, leaveWorkdaysIn, proRataVacation, targetHours, trackingStart as userTrackingStart, vacationBalance } from "@/lib/stats";
 import { formatDate } from "@/lib/dates";
 import { UserDangerZone } from "@/components/user-danger-zone";
 import { arbzgWarnings } from "@/lib/worktime";
-import { PageHeader, Stat } from "@/components/page-header";
+import { PageHeader } from "@/components/page-header";
+import { PeriodNav } from "@/components/period-nav";
+import { StatStrip } from "@/components/stat-strip";
+import { Icon } from "@/components/icons";
 import { UserForm } from "@/components/user-form";
 import { InvitePanel } from "@/components/invite-panel";
 
@@ -87,11 +90,25 @@ export default async function PersonPage({
 
   return (
     <>
-      <PageHeader title={user.name} subtitle={`${user.email} · ${ROLE_INFO[normalizeRole(user.role)].label} · ${formatNum(user.weeklyHours)} h/Woche · Auswertung ${year}`}>
-        <Link className="btn-secondary" href={`/mitarbeitende/${id}?jahr=${year - 1}`}>← {year - 1}</Link>
-        {year < thisYear && <Link className="btn-secondary" href={`/mitarbeitende/${id}?jahr=${year + 1}`}>{year + 1} →</Link>}
-        {can(me.role, "export.data") && <a className="btn-secondary" href={`/api/export?von=${yStart}&bis=${yEnd}&person=${id}`}>CSV-Export {year}</a>}
-        <Link className="btn-ghost" href="/mitarbeitende">Alle</Link>
+      <Link href="/mitarbeitende" className="mb-1 inline-flex min-h-9 items-center gap-1 text-[15px] text-brand-700">
+        <Icon name="chevronLeft" className="h-4 w-4" /> Mitarbeitende
+      </Link>
+      <PageHeader title={user.name} subtitle={`${ROLE_INFO[normalizeRole(user.role)].label} · ${formatNum(user.weeklyHours)} h/Woche · ${user.email}`}>
+        <div className="flex w-full gap-2 md:w-auto">
+          <PeriodNav
+            label={`Auswertung ${year}`}
+            prevHref={`/mitarbeitende/${id}?jahr=${year - 1}`}
+            nextHref={year < thisYear ? `/mitarbeitende/${id}?jahr=${year + 1}` : `/mitarbeitende/${id}`}
+            todayHref={year === thisYear ? undefined : `/mitarbeitende/${id}`}
+            prevLabel="Voriges Jahr"
+            nextLabel="Nächstes Jahr"
+          />
+          {can(me.role, "export.data") && (
+            <a className="card flex min-h-[52px] w-[52px] shrink-0 items-center justify-center text-brand-700" href={`/api/export?von=${yStart}&bis=${yEnd}&person=${id}`} aria-label={`CSV-Export ${year}`} title={`CSV-Export ${year}`}>
+              <Icon name="download" />
+            </a>
+          )}
+        </div>
       </PageHeader>
 
       {(user.exitDate || user.anonymizedAt || !user.active) && (
@@ -124,7 +141,8 @@ export default async function PersonPage({
         </div>
       )}
 
-      {user.active && mayManage && (
+      {/* Offene Einladung zuerst zeigen – bei aktiven Konten steht der Zugang unten bei den Stammdaten */}
+      {user.active && mayManage && !user.passwordSetAt && (
         <InvitePanel
           userId={user.id}
           name={user.name}
@@ -134,28 +152,29 @@ export default async function PersonPage({
         />
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label={`Überstunden-Saldo ${year}${year === thisYear ? " (bis heute)" : ""}`}
-          value={`${signed(saldo)} h`}
-          tone={saldo < -8 || saldo > 40 ? "warn" : "good"}
-          hint="Ist minus Soll, Abwesenheiten berücksichtigt"
-        />
-        <Stat label={`Stunden ${year}`} value={`${formatNum(istYear)} h`} hint={showCosts ? formatEUR(months.reduce((s, m) => s + m.cost, 0)) + " Personalkosten" : undefined} />
-        <Stat
-          label={`Urlaub ${year}`}
-          value={`${formatNum(bal.remaining)} von ${formatNum(bal.total)} übrig`}
-          hint={`${formatNum(bal.taken)} genommen${bal.pending ? `, ${formatNum(bal.pending)} beantragt` : ""}${bal.carryover ? ` · inkl. ${formatNum(bal.carryover)} Resturlaub` : ""}`}
-        />
-        {showReasons ? (
-          <Stat label={`Krankheitstage ${year}`} value={formatNum(sickDays)} />
-        ) : (
-          <Stat label={`Projekte ${year}`} value={String(perProject.size)} />
-        )}
-      </div>
+      <StatStrip
+        className="mb-4 md:mb-6"
+        items={[
+          {
+            label: `Saldo ${year}${year === thisYear ? " bis heute" : ""}`,
+            value: `${signed(saldo)} h`,
+            tone: saldo < -8 || saldo > 40 ? "warn" : "good",
+            hint: "Ist minus Soll",
+          },
+          { label: `Stunden ${year}`, value: `${formatNum(istYear)} h`, hint: showCosts ? formatEUR(months.reduce((s, m) => s + m.cost, 0)) : undefined },
+          {
+            label: `Urlaub übrig`,
+            value: `${formatNum(bal.remaining)} / ${formatNum(bal.total)}`,
+            hint: `${formatNum(bal.taken)} genommen${bal.pending ? `, ${formatNum(bal.pending)} beantragt` : ""}`,
+          },
+          showReasons
+            ? { label: `Krankheitstage ${year}`, value: formatNum(sickDays) }
+            : { label: `Projekte ${year}`, value: String(perProject.size) },
+        ]}
+      />
 
       {(missingWork > 0 || violations.length > 0) && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] text-amber-900 md:mb-6 md:px-5">
           <b>Arbeitszeiterfassung:</b>{" "}
           {missingWork > 0 && <>an {missingWork} Tag(en) wurden Projektstunden ohne Beginn/Ende gebucht. </>}
           {violations.length > 0 && <>{violations.length} Tag(e) mit Hinweis nach Arbeitszeitgesetz (Pausen bzw. über 10 h). </>}
@@ -163,34 +182,35 @@ export default async function PersonPage({
         </div>
       )}
 
-      <div className="mb-6 grid gap-6 lg:grid-cols-3">
+      <div className="mb-4 grid gap-4 md:mb-6 md:gap-6 lg:grid-cols-3">
         <section className="card overflow-x-auto lg:col-span-2">
-          <h2 className="px-5 pt-4 pb-2 font-semibold">Monatsübersicht</h2>
-          <table className="data-table min-w-[640px]">
+          <h2 className="px-4 pt-4 pb-2 font-semibold md:px-5">Monatsübersicht</h2>
+          {/* Auf dem iPhone nur Monat, Ist, Differenz und Saldo */}
+          <table className="data-table md:min-w-[640px]">
             <thead>
               <tr>
-                <th>Monat</th><th className="text-right!">Soll</th><th className="text-right!">Ist</th><th className="text-right!">Differenz</th>
-                <th className="text-right!">Saldo</th><th className="text-right!">Urlaub</th>{showReasons && <th className="text-right!">Krank</th>}{showCosts && <th className="text-right!">Kosten</th>}
+                <th>Monat</th><th className="hidden text-right! md:table-cell">Soll</th><th className="text-right!">Ist</th><th className="text-right!">Diff.</th>
+                <th className="text-right!">Saldo</th><th className="hidden text-right! md:table-cell">Urlaub</th>{showReasons && <th className="hidden text-right! md:table-cell">Krank</th>}{showCosts && <th className="hidden text-right! md:table-cell">Kosten</th>}
               </tr>
             </thead>
             <tbody>
               {months.map((r) => (
                 <tr key={r.m} className={r.counted ? "" : "text-slate-300"}>
-                  <td className="whitespace-nowrap">{monthLabel(r.m)}</td>
-                  <td className="text-right tabular-nums">{r.counted ? formatNum(r.soll) : "–"}</td>
+                  <td className="whitespace-nowrap"><span className="md:hidden">{monthLabelShort(r.m)}</span><span className="hidden md:inline">{monthLabel(r.m)}</span></td>
+                  <td className="hidden text-right tabular-nums md:table-cell">{r.counted ? formatNum(r.soll) : "–"}</td>
                   <td className="text-right tabular-nums">{r.counted ? formatNum(r.ist) : "–"}</td>
                   <td className={`text-right tabular-nums ${r.ist - r.soll < -0.01 ? "text-amber-700" : ""}`}>{r.counted ? signed(r.ist - r.soll) : "–"}</td>
                   <td className="text-right font-medium tabular-nums">{r.counted ? signed(r.saldo) : "–"}</td>
-                  <td className="text-right tabular-nums">{r.vacation ? formatNum(r.vacation) : "–"}</td>
-                  {showReasons && <td className="text-right tabular-nums">{r.sick ? formatNum(r.sick) : "–"}</td>}
-                  {showCosts && <td className="text-right tabular-nums">{r.counted ? formatEUR(r.cost) : "–"}</td>}
+                  <td className="hidden text-right tabular-nums md:table-cell">{r.vacation ? formatNum(r.vacation) : "–"}</td>
+                  {showReasons && <td className="hidden text-right tabular-nums md:table-cell">{r.sick ? formatNum(r.sick) : "–"}</td>}
+                  {showCosts && <td className="hidden text-right tabular-nums md:table-cell">{r.counted ? formatEUR(r.cost) : "–"}</td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </section>
         <section className="card overflow-x-auto">
-          <h2 className="px-5 pt-4 pb-2 font-semibold">Projekte {year}</h2>
+          <h2 className="px-4 pt-4 pb-2 font-semibold md:px-5">Projekte {year}</h2>
           <table className="data-table">
             <thead><tr><th>Projekt</th><th className="text-right!">Std.</th><th className="text-right!">Anteil</th></tr></thead>
             <tbody>
@@ -207,8 +227,18 @@ export default async function PersonPage({
         </section>
       </div>
 
+      {user.active && mayManage && user.passwordSetAt && (
+        <InvitePanel
+          userId={user.id}
+          name={user.name}
+          email={user.email}
+          registered={!!user.passwordSetAt}
+          openUntil={openToken?.expiresAt.toISOString() ?? null}
+        />
+      )}
+
       {mayManage && !user.anonymizedAt && (
-        <section className="card mb-6 max-w-3xl p-5">
+        <section className="card mb-6 max-w-3xl p-4 md:p-5">
           <h2 className="mb-4 font-semibold">Stammdaten bearbeiten</h2>
           <UserForm user={user} actorRole={me.role} />
         </section>

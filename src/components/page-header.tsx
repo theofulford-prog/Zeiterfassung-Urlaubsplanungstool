@@ -1,11 +1,11 @@
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: string; children?: React.ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3 md:mb-6">
+      <div className="min-w-0">
         <h1 className="text-[28px] leading-tight font-bold tracking-tight md:text-[26px]">{title}</h1>
         {subtitle && <p className="mt-0.5 text-[15px] text-slate-500">{subtitle}</p>}
       </div>
-      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+      {children && <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">{children}</div>}
     </div>
   );
 }

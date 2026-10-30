@@ -9,6 +9,15 @@ const paths: Record<string, string> = {
   calendar: "M4.5 5.5h15A1.5 1.5 0 0 1 21 7v12a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19V7a1.5 1.5 0 0 1 1.5-1.5zM3 10h18M8 3.5v4M16 3.5v4",
   person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.8-3.6 3.8-6 7.5-6s6.7 2.4 7.5 6",
   shield: "M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6zM9 12l2 2 4-4",
+  chevronLeft: "M15 5l-7 7 7 7",
+  chevronRight: "M9 5l7 7-7 7",
+  chevronDown: "M5 9l7 7 7-7",
+  plus: "M12 5v14M5 12h14",
+  pencil: "M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16v4zM13.5 6.5l4 4",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3",
+  play: "M8 5.5v13l10-6.5z",
+  stop: "M7 7h10v10H7z",
+  download: "M12 4v11M7 10l5 5 5-5M5 20h14",
   more: "M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z",
 };
 

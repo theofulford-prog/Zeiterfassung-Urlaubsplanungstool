@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
-import { addMonths, formatDate, monthLabelShort, monthStart, todayISO } from "@/lib/dates";
+import { addMonths, formatDateShort, monthLabelShort, monthStart, todayISO } from "@/lib/dates";
 import { formatEUR, formatHours, formatNum, formatPct } from "@/lib/format";
-import { PageHeader, Stat } from "@/components/page-header";
+import { PageHeader } from "@/components/page-header";
+import { StatStrip } from "@/components/stat-strip";
+import { Icon } from "@/components/icons";
 import { CumulativeCostChart, MonthlyHoursChart } from "@/components/charts";
 import { ProjectForm } from "@/components/project-form";
 
@@ -49,34 +51,45 @@ export default async function ProjektDetailPage({ params }: { params: Promise<{ 
 
   return (
     <>
+      <Link href="/projekte" className="mb-1 inline-flex min-h-9 items-center gap-1 text-[15px] text-brand-700">
+        <Icon name="chevronLeft" className="h-4 w-4" /> Projekte
+      </Link>
       <PageHeader title={project.name} subtitle={`${project.category}${project.description ? " · " + project.description : ""}`}>
-        <a className="btn-secondary" href={`/api/export?projekt=${project.id}&von=${entries.length ? entries[entries.length - 1].date : todayISO()}&bis=${todayISO()}`}>CSV-Export</a>
-        <Link className="btn-ghost" href="/projekte">← Alle Projekte</Link>
+        <a className="btn-secondary w-full md:w-auto" href={`/api/export?projekt=${project.id}&von=${entries.length ? entries[entries.length - 1].date : todayISO()}&bis=${todayISO()}`}>
+          <Icon name="download" className="h-[18px] w-[18px]" /> CSV-Export
+        </a>
       </PageHeader>
 
-      <div className={`mb-6 grid gap-4 ${showCosts ? "sm:grid-cols-4" : "sm:grid-cols-2"}`}>
-        <Stat label="Stunden gesamt" value={formatHours(hours)} />
-        {!showCosts && <Stat label="Beteiligte Personen" value={String(perUser.size)} />}
-        {showCosts && <>
-        <Stat label="Personalkosten gesamt" value={formatEUR(cost)} />
-        <Stat label="Budget" value={project.budget ? formatEUR(project.budget) : "–"} />
-        <Stat
-          label="Budget verbraucht"
-          value={project.budget ? formatPct(cost / project.budget) : "–"}
-          tone={project.budget ? (cost > project.budget * 0.85 ? "warn" : "good") : undefined}
-          hint={project.budget ? `Rest ${formatEUR(project.budget - cost)}` : undefined}
-        />
-        </>}
-      </div>
+      <StatStrip
+        className="mb-4 md:mb-6"
+        items={
+          showCosts
+            ? [
+                { label: "Stunden gesamt", value: formatHours(hours) },
+                { label: "Personalkosten", value: formatEUR(cost) },
+                { label: "Budget", value: project.budget ? formatEUR(project.budget) : "–" },
+                {
+                  label: "Budget verbraucht",
+                  value: project.budget ? formatPct(cost / project.budget) : "–",
+                  tone: project.budget ? (cost > project.budget * 0.85 ? "warn" : "good") : undefined,
+                  hint: project.budget ? `Rest ${formatEUR(project.budget - cost)}` : undefined,
+                },
+              ]
+            : [
+                { label: "Stunden gesamt", value: formatHours(hours) },
+                { label: "Beteiligte Personen", value: String(perUser.size) },
+              ]
+        }
+      />
 
-      <div className={`mb-6 grid gap-6 ${showCosts ? "lg:grid-cols-2" : ""}`}>
+      <div className={`mb-4 grid gap-4 md:mb-6 md:gap-6 ${showCosts ? "lg:grid-cols-2" : ""}`}>
         {showCosts && (
-          <section className="card p-5">
+          <section className="card p-4 md:p-5">
             <h2 className="mb-3 font-semibold">Kostenentwicklung (kumuliert)</h2>
             <CumulativeCostChart data={cumData} budget={project.budget} />
           </section>
         )}
-        <section className="card p-5">
+        <section className="card p-4 md:p-5">
           <h2 className="mb-3 font-semibold">Stunden pro Monat</h2>
           <MonthlyHoursChart data={cumData} />
         </section>
@@ -98,14 +111,14 @@ export default async function ProjektDetailPage({ params }: { params: Promise<{ 
         <section className="card overflow-x-auto lg:col-span-2">
           <h2 className="px-5 pt-4 pb-2 font-semibold">Letzte Buchungen</h2>
           <table className="data-table">
-            <thead><tr><th>Datum</th><th>Person</th><th className="text-right!">Std.</th><th>Notiz</th></tr></thead>
+            <thead><tr><th>Datum</th><th>Person</th><th className="text-right!">Std.</th><th className="hidden md:table-cell">Notiz</th></tr></thead>
             <tbody>
               {entries.slice(0, 25).map((e) => (
                 <tr key={e.id}>
-                  <td className="whitespace-nowrap">{formatDate(e.date)}</td>
+                  <td className="whitespace-nowrap tabular-nums">{formatDateShort(e.date)}</td>
                   <td className="whitespace-nowrap">{e.user.name}</td>
                   <td className="text-right tabular-nums">{formatNum(e.hours)}</td>
-                  <td className="text-slate-500">{e.note}</td>
+                  <td className="hidden text-slate-500 md:table-cell">{e.note}</td>
                 </tr>
               ))}
             </tbody>

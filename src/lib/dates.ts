@@ -155,3 +155,20 @@ export function isoWeek(s: string): number {
   const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
   return 1 + Math.round(((d.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
 }
+
+const WEEKDAYS_LONG = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+/** z. B. "Dienstag, 27. Oktober" */
+export function formatDayLong(s: string): string {
+  return `${WEEKDAYS_LONG[parseISO(s).getUTCDay()]}, ${Number(s.slice(8))}. ${MONTHS[Number(s.slice(5, 7)) - 1]}`;
+}
+
+/** Kompakter Zeitraum, z. B. "16.–20.11.2026", "28.10.–3.11.2026" oder "5.11.2026" */
+export function formatRange(a: string, b: string): string {
+  const [ya, ma, da] = a.split("-").map(Number);
+  const [yb, mb, db] = b.split("-").map(Number);
+  if (a === b) return `${da}.${mb}.${yb}`;
+  if (ya === yb && ma === mb) return `${da}.–${db}.${mb}.${yb}`;
+  if (ya === yb) return `${da}.${ma}.–${db}.${mb}.${yb}`;
+  return `${da}.${ma}.${ya} – ${db}.${mb}.${yb}`;
+}

@@ -25,9 +25,30 @@ export default async function ProjektePage() {
   return (
     <>
       <PageHeader title="Projekte & Themen" subtitle="Worauf Mitarbeitende ihre Zeit buchen">
-        <Link className="btn-primary" href="/projekte/neu">+ Neues Projekt</Link>
+        <Link className="btn-primary w-full md:w-auto" href="/projekte/neu">+ Neues Projekt</Link>
       </PageHeader>
-      <section className="card overflow-x-auto">
+      {/* iPhone: Liste */}
+      <ul className="card divide-y divide-slate-100 md:hidden">
+        {projects.map((p) => {
+          const a = agg.get(p.id) ?? { hours: 0, cost: 0, last: "" };
+          return (
+            <li key={p.id}>
+              <Link href={`/projekte/${p.id}`} className={`grid gap-1.5 px-4 py-3 active:bg-slate-50 ${p.active ? "" : "opacity-60"}`}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-[15px] leading-snug font-medium">{p.name}</span>
+                  <span className="shrink-0 text-[14px] tabular-nums">{showCosts ? formatEUR(a.cost) : `${formatNum(a.hours)} h`}</span>
+                </div>
+                <span className="text-[12px] text-slate-500">
+                  {p.category} · {formatNum(a.hours)} h{p.active ? "" : " · abgeschlossen"}
+                </span>
+                {showCosts && p.budget ? <BudgetBar used={a.cost} budget={p.budget} /> : null}
+              </Link>
+            </li>
+          );
+        })}
+        {projects.length === 0 && <li className="px-4 py-6 text-center text-[15px] text-slate-500">Noch keine Projekte angelegt.</li>}
+      </ul>
+      <section className="card hidden overflow-x-auto md:block">
         <table className="data-table min-w-[720px]">
           <thead>
             <tr>

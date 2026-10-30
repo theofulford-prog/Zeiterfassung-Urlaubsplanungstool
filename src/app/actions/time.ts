@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isValidISO } from "@/lib/dates";
+import { isValidISO, todayISO } from "@/lib/dates";
 import { canEditDate, lockMessage } from "@/lib/lock";
 import { can } from "@/lib/permissions";
-import { parseHM } from "@/lib/worktime";
+import { nowHM, parseHM, requiredBreak } from "@/lib/worktime";
 import type { FormState } from "./auth";
 
 function parseHours(v: FormDataEntryValue | null): number | string {
@@ -94,16 +94,54 @@ export async function saveWorkDay(_: FormState, form: FormData): Promise<FormSta
     return { ok: "Arbeitszeit entfernt." };
   }
   const s = parseHM(start);
-  const e = parseHM(end);
-  if (s === null || e === null) return { error: "Bitte Beginn und Ende als HH:MM angeben." };
-  if (e <= s) return { error: "Das Ende muss nach dem Beginn liegen." };
-  if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes >= e - s) return { error: "Bitte eine gültige Pause in Minuten angeben." };
+  const e = end ? parseHM(end) : null;
+  if (s === null) return { error: "Bitte den Beginn als HH:MM angeben." };
+  if (end && e === null) return { error: "Bitte das Ende als HH:MM angeben." };
+  if (e !== null && e <= s) return { error: "Das Ende muss nach dem Beginn liegen." };
+  if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || (e !== null && breakMinutes >= e - s)) {
+    return { error: "Bitte eine gültige Pause in Minuten angeben." };
+  }
 
+  const data = { start, end: end || null, breakMinutes };
   await prisma.workDay.upsert({
     where: { userId_date: { userId: user.id, date } },
-    update: { start, end, breakMinutes },
-    create: { userId: user.id, date, start, end, breakMinutes },
+    update: data,
+    create: { userId: user.id, date, ...data },
   });
   revalidatePath("/", "layout");
   return { ok: "Gespeichert." };
+}
+
+/**
+ * Stempeluhr für heute: "start" setzt den Arbeitsbeginn auf jetzt, "end" den Feierabend.
+ * Beim Feierabend wird die gesetzliche Mindestpause eingetragen, falls noch keine erfasst ist.
+ */
+export async function stampWork(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const kind = String(form.get("kind") ?? "");
+  const today = todayISO();
+  const now = nowHM();
+  const existing = await prisma.workDay.findUnique({ where: { userId_date: { userId: user.id, date: today } } });
+
+  if (kind === "start") {
+    if (existing) return { error: `Arbeitsbeginn ist schon eingetragen (${existing.start}).` };
+    await prisma.workDay.create({ data: { userId: user.id, date: today, start: now, end: null, breakMinutes: 0 } });
+    revalidatePath("/", "layout");
+    return { ok: `Arbeitsbeginn ${now} gespeichert.` };
+  }
+  if (kind === "end") {
+    if (!existing) return { error: "Bitte zuerst den Arbeitsbeginn eintragen." };
+    const s = parseHM(existing.start)!;
+    const e = parseHM(now)!;
+    if (e <= s) return { error: "Feierabend muss nach dem Arbeitsbeginn liegen." };
+    const breakMinutes = Math.max(existing.breakMinutes, requiredBreak(e - s - existing.breakMinutes));
+    await prisma.workDay.update({ where: { id: existing.id }, data: { end: now, breakMinutes } });
+    revalidatePath("/", "layout");
+    return {
+      ok: breakMinutes > existing.breakMinutes
+        ? `Feierabend ${now} gespeichert. ${breakMinutes} Min. Pause wurden automatisch eingetragen – bitte bei Bedarf anpassen.`
+        : `Feierabend ${now} gespeichert.`,
+    };
+  }
+  return { error: "Unbekannte Aktion." };
 }

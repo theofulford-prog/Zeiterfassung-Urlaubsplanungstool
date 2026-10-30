@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     });
     body = csv([
       ["Datum", "Person", "Beginn", "Ende", "Pause (Min.)", "Netto (Std.)"],
-      ...rows.map((w) => [formatDate(w.date), w.user.name, w.start, w.end, String(w.breakMinutes), netMinutes(w) / 60]),
+      ...rows.map((w) => [formatDate(w.date), w.user.name, w.start, w.end ?? "läuft", String(w.breakMinutes), netMinutes(w) / 60]),
     ]);
     name = "arbeitszeiten";
   } else if (typ === "abwesenheiten") {

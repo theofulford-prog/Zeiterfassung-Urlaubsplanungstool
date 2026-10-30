@@ -30,7 +30,7 @@ export default async function RollenPage() {
         subtitle={`Deine Rolle: ${ROLE_INFO[normalizeRole(me.role)].label}. Rollen vergibst du auf der Seite der jeweiligen Person.`}
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 md:mb-6 md:gap-4 lg:grid-cols-4">
         {ROLES.map((r) => (
           <section key={r} className="card p-4">
             <div className="flex items-baseline justify-between gap-2">
@@ -79,7 +79,7 @@ function Matrix({
   editable, perms, isDefault,
 }: { editable: boolean; perms: [Permission, string][]; isDefault: (r: Role, p: Permission) => boolean }) {
   const table = (
-    <table className="data-table min-w-[720px]">
+    <table className="data-table md:min-w-[720px]">
       <thead>
         <tr>
           <th>Recht</th>

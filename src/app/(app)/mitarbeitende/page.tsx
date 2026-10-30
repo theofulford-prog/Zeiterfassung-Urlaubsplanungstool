@@ -6,6 +6,7 @@ import { formatDate, todayISO } from "@/lib/dates";
 import { formatEUR, formatNum } from "@/lib/format";
 import { carryoverFor, vacationBalance } from "@/lib/stats";
 import { PageHeader } from "@/components/page-header";
+import { Icon } from "@/components/icons";
 
 export default async function MitarbeitendePage() {
   const me = await requirePermission("reports.view");
@@ -19,9 +20,31 @@ export default async function MitarbeitendePage() {
   return (
     <>
       <PageHeader title="Mitarbeitende" subtitle={`Logins, Arbeitszeitmodell, Urlaubskonto ${year} und Kostensätze`}>
-        {can(me.role, "users.manage") && <Link className="btn-primary" href="/mitarbeitende/neu">+ Person anlegen</Link>}
+        {can(me.role, "users.manage") && <Link className="btn-primary w-full md:w-auto" href="/mitarbeitende/neu">+ Person anlegen</Link>}
       </PageHeader>
-      <section className="card overflow-x-auto">
+      {/* iPhone: Liste */}
+      <ul className="card divide-y divide-slate-100 md:hidden">
+        {users.map((u) => {
+          const bal = vacationBalance(u.vacationDaysPerYear, year, u.leaveRequests, carryoverFor(u, year));
+          return (
+            <li key={u.id}>
+              <Link href={`/mitarbeitende/${u.id}`} className={`flex items-center gap-3 px-4 py-3 active:bg-slate-50 ${u.active ? "" : "opacity-60"}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-1.5 text-[15px] font-medium">
+                    <span className="truncate">{u.name}</span>
+                    <UserStatus u={u} />
+                  </p>
+                  <p className="truncate text-[13px] text-slate-500">
+                    {ROLE_INFO[normalizeRole(u.role)].label} · {formatNum(bal.remaining)} Tage Urlaub übrig
+                  </p>
+                </div>
+                <Icon name="chevronRight" className="h-4 w-4 shrink-0 text-slate-300" />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      <section className="card hidden overflow-x-auto md:block">
         <table className="data-table min-w-[760px]">
           <thead>
             <tr>
@@ -34,11 +57,7 @@ export default async function MitarbeitendePage() {
               const bal = vacationBalance(u.vacationDaysPerYear, year, u.leaveRequests, carryoverFor(u, year));
               return (
                 <tr key={u.id} className={u.active ? "" : "text-slate-400"}>
-                  <td className="font-medium"><Link className="hover:text-brand-700" href={`/mitarbeitende/${u.id}`}>{u.name}</Link>{u.anonymizedAt ? <span className="badge ml-2 bg-slate-100 text-slate-500">anonymisiert</span>
-                      : u.exitDate && u.exitDate < todayISO() ? <span className="badge ml-2 bg-slate-100 text-slate-500">ausgetreten {formatDate(u.exitDate)}</span>
-                      : u.exitDate ? <span className="badge ml-2 bg-amber-50 text-amber-700">Austritt {formatDate(u.exitDate)}</span>
-                      : !u.active ? <span className="badge ml-2 bg-slate-100 text-slate-500">gesperrt</span> : null}
-                    {u.active && !u.passwordSetAt && <span className="badge ml-2 bg-amber-50 text-amber-700">eingeladen</span>}</td>
+                  <td className="font-medium"><Link className="hover:text-brand-700" href={`/mitarbeitende/${u.id}`}>{u.name}</Link><span className="ml-2"><UserStatus u={u} /></span></td>
                   <td className="text-slate-500">{u.email}</td>
                   <td>
                     <span className={`badge ${u.role === "EMPLOYEE" ? "bg-slate-100 text-slate-600" : "bg-brand-50 text-brand-700"}`}>
@@ -60,4 +79,13 @@ export default async function MitarbeitendePage() {
       </section>
     </>
   );
+}
+
+function UserStatus({ u }: { u: { anonymizedAt: Date | null; exitDate: string | null; active: boolean; passwordSetAt: Date | null } }) {
+  if (u.anonymizedAt) return <span className="badge bg-slate-100 text-slate-500">anonymisiert</span>;
+  if (u.exitDate && u.exitDate < todayISO()) return <span className="badge bg-slate-100 text-slate-500">ausgetreten {formatDate(u.exitDate)}</span>;
+  if (u.exitDate) return <span className="badge bg-amber-50 text-amber-700">Austritt {formatDate(u.exitDate)}</span>;
+  if (!u.active) return <span className="badge bg-slate-100 text-slate-500">gesperrt</span>;
+  if (!u.passwordSetAt) return <span className="badge bg-amber-50 text-amber-700">eingeladen</span>;
+  return null;
 }
