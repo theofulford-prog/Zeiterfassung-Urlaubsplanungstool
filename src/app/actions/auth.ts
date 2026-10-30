@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { homeFor } from "@/lib/permissions";
 import { todayISO } from "@/lib/dates";
-import { hasAccessOn } from "@/lib/employment";
+import { loginBlockReason } from "@/lib/login";
 import { loadPermissions } from "@/lib/rbac";
 import { clearFailures, isLocked, registerFailure } from "@/lib/rate-limit";
 import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/session";
@@ -31,12 +31,14 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
 
   const user = await prisma.user.findUnique({ where: { email } });
   const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
-  const emps = user ? await prisma.employment.findMany({ where: { userId: user.id }, select: { id: true, startDate: true, endDate: true } }) : [];
-  const exited = !!user && !hasAccessOn(user, emps, todayISO());
-  if (!user || !user.active || exited || !ok) {
+  if (!user || !ok) {
     keys.forEach(registerFailure);
     return { error: "E-Mail oder Passwort ist falsch." };
   }
+  // Erst nach korrektem Passwort verraten, dass der Zugang gesperrt bzw. beendet ist.
+  const emps = await prisma.employment.findMany({ where: { userId: user.id }, select: { id: true, startDate: true, endDate: true } });
+  const blocked = loginBlockReason(user, emps, todayISO());
+  if (blocked) return { error: blocked };
   keys.forEach(clearFailures);
   await issueSession(user);
   await loadPermissions();
@@ -53,7 +55,7 @@ export async function changePassword(_: FormState, form: FormData): Promise<Form
   const current = String(form.get("current") ?? "");
   const next = String(form.get("next") ?? "");
   const repeat = String(form.get("repeat") ?? "");
-  if (!(await bcrypt.compare(current, user.passwordHash))) return { error: "Das aktuelle Passwort stimmt nicht." };
+  if (!user.passwordHash || !(await bcrypt.compare(current, user.passwordHash))) return { error: "Das aktuelle Passwort stimmt nicht." };
   if (next.length < 8) return { error: "Das neue Passwort muss mindestens 8 Zeichen haben." };
   if (next !== repeat) return { error: "Die beiden neuen Passwörter stimmen nicht überein." };
   if (next === current) return { error: "Das neue Passwort muss sich vom bisherigen unterscheiden." };

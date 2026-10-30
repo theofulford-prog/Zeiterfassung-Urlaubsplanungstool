@@ -10,8 +10,10 @@ datasource db {
 model User {
   id                      String          @id @default(cuid())
   name                    String
-  email                   String          @unique
-  passwordHash            String
+  /// Login; leer = Person ohne eigenen Zugang (ihre Leitung erfasst für sie)
+  email                   String?          @unique
+  /// leer = noch kein Passwort gesetzt (Einladung offen) bzw. kein Zugang
+  passwordHash            String?
   /// "ADMIN" | "GF" | "LEAD" | "EMPLOYEE" – Rechte siehe src/lib/permissions.ts
   role                    String          @default("EMPLOYEE")
   /// Interner Kostensatz in EUR pro Stunde – nur für die Geschäftsführung sichtbar

@@ -8,7 +8,7 @@ export default async function KontoPage() {
   const user = await requireUser();
   return (
     <>
-      <PageHeader title="Mein Konto" subtitle={`${user.name} · ${user.email}`}>
+      <PageHeader title="Mein Konto" subtitle={[user.name, user.email].filter(Boolean).join(" · ")}>
         <form action={logout}><button className="btn-secondary">Abmelden</button></form>
       </PageHeader>
       <Link href="/profil" className="card mb-4 flex max-w-xl min-h-12 items-center justify-between px-5 py-3 text-[15px] text-brand-700">

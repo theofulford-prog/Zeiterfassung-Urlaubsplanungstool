@@ -2,7 +2,7 @@ import { saveUser } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
 import { assignableRoles, normalizeRole, ROLE_INFO, ROLES } from "@/lib/permissions";
 
-type U = { id: string; name: string; email: string; role: string; tracksTime: boolean; active: boolean };
+type U = { id: string; name: string; email: string | null; role: string; tracksTime: boolean; active: boolean; accessWithoutEmployment: boolean };
 
 export function UserForm({ user, actorRole }: { user?: U; actorRole: string }) {
   const allowed = assignableRoles(actorRole);
@@ -16,8 +16,8 @@ export function UserForm({ user, actorRole }: { user?: U; actorRole: string }) {
         <input className="input" id="name" name="name" defaultValue={user?.name} required />
       </div>
       <div>
-        <label className="label" htmlFor="email">E-Mail (Login)</label>
-        <input className="input" id="email" name="email" type="email" defaultValue={user?.email} required />
+        <label className="label" htmlFor="email">E-Mail (Login, optional)</label>
+        <input className="input" id="email" name="email" type="email" defaultValue={user?.email ?? ""} placeholder="leer = kein eigener Zugang" />
       </div>
       <div>
         <label className="label" htmlFor="tracksTime">Zeiterfassung</label>
@@ -43,6 +43,13 @@ export function UserForm({ user, actorRole }: { user?: U; actorRole: string }) {
         </label>
         <input className="input" id="password" name="password" type="text" autoComplete="new-password" placeholder={user ? "leer lassen = unverändert" : "leer lassen = per Link einladen"} />
       </div>
+      <label className="flex items-start gap-2 text-[14px] sm:col-span-2">
+        <input type="checkbox" name="accessWithoutEmployment" className="mt-1" defaultChecked={user?.accessWithoutEmployment ?? false} />
+        <span>
+          Zugang ohne Arbeitsverhältnis
+          <span className="block text-[12px] text-slate-500">z. B. Geschäftsführung ohne erfassten Vertrag oder externe Administration – Zugang endet dann nicht mit einem Austritt.</span>
+        </span>
+      </label>
       {user && (
         <div>
           <label className="label" htmlFor="active">Status</label>

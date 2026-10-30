@@ -21,6 +21,7 @@ export async function generateLink(_: LinkState, form: FormData): Promise<LinkSt
   if (!user || !user.active) return { error: "Person nicht gefunden oder inaktiv." };
   // Sonst könnte sich jemand ohne Admin-Recht über einen Zurücksetzen-Link ein Admin-Konto aneignen.
   if (!canManageUser(actor.role, user.role)) return { error: "Für dieses Konto darfst du keine Links erzeugen." };
+  if (!user.email) return { error: "Für eine Einladung bitte zuerst eine E-Mail-Adresse eintragen." };
   const purpose: TokenPurpose = user.passwordSetAt ? "RESET" : "INVITE";
   const { url, expiresAt } = await createAuthLink(user.id, purpose);
   revalidatePath(`/mitarbeitende/${user.id}`);

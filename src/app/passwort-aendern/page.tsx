@@ -22,7 +22,7 @@ export default async function PasswortAendernPage() {
         </div>
         <div className="card p-6">
           <ActionForm action={changePassword} submitLabel="Passwort festlegen" className="grid gap-4">
-            <input type="text" name="username" value={user.email} autoComplete="username" readOnly hidden />
+            <input type="text" name="username" value={user.email ?? ""} autoComplete="username" readOnly hidden />
             <div>
               <label className="label" htmlFor="current">Startpasswort</label>
               <input className="input" id="current" name="current" type="password" autoComplete="current-password" required autoFocus />

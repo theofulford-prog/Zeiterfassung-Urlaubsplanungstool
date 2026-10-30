@@ -123,7 +123,7 @@ export default async function PersonPage({
         subtitle={[
           ROLE_INFO[normalizeRole(user.role)].label,
           current.length ? `${current.map(companyLabel).join(", ")} · ${formatNum(weeklyHours)} h/Woche` : "kein bestehendes Arbeitsverhältnis",
-          user.email,
+          user.email ?? "kein eigener Zugang",
         ].join(" · ")}
       >
         <div className="flex w-full gap-2 md:w-auto">
@@ -174,11 +174,24 @@ export default async function PersonPage({
       )}
 
       {/* Offene Einladung zuerst zeigen – bei aktiven Konten steht der Zugang unten bei den Stammdaten */}
-      {user.active && mayManage && !user.passwordSetAt && (
+      {mayManage && !user.anonymizedAt && !user.email && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-[14px] md:mb-6 md:px-5">
+          <b>Kein eigener Zugang.</b> Ohne E-Mail-Adresse kann sich diese Person nicht anmelden – ihre Leitung erfasst Zeiten und
+          Abwesenheiten für sie. Für einen eigenen Zugang unten eine E-Mail-Adresse eintragen und dann einladen.
+        </div>
+      )}
+      {mayManage && !user.anonymizedAt && employments.length === 0 && !user.accessWithoutEmployment && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] text-amber-900 md:mb-6 md:px-5">
+          <b>Noch kein Arbeitsverhältnis.</b> Ohne Arbeitsverhältnis gibt es weder Soll noch Urlaubskonto, und eine Anmeldung ist nicht möglich.
+          {showPersonnel ? " Bitte unten unter „Arbeitsverhältnisse“ anlegen." : ""}
+        </div>
+      )}
+
+      {user.active && mayManage && user.email && !user.passwordSetAt && (
         <InvitePanel
           userId={user.id}
           name={user.name}
-          email={user.email}
+          email={user.email!}
           registered={!!user.passwordSetAt}
           openUntil={openToken?.expiresAt.toISOString() ?? null}
         />
@@ -261,11 +274,11 @@ export default async function PersonPage({
         </section>
       </div>
 
-      {user.active && mayManage && user.passwordSetAt && (
+      {user.active && mayManage && user.email && user.passwordSetAt && (
         <InvitePanel
           userId={user.id}
           name={user.name}
-          email={user.email}
+          email={user.email!}
           registered={!!user.passwordSetAt}
           openUntil={openToken?.expiresAt.toISOString() ?? null}
         />

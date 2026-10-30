@@ -80,7 +80,7 @@ export default async function MitarbeitendePage() {
               return (
                 <tr key={u.id} className={u.active ? "" : "text-slate-400"}>
                   <td className="font-medium"><Link className="hover:text-brand-700" href={`/mitarbeitende/${u.id}`}>{u.name}</Link><span className="ml-2"><UserStatus u={u} employments={bal.all} /></span></td>
-                  <td className="text-slate-500">{u.email}</td>
+                  <td className="text-slate-500">{u.email ?? "–"}</td>
                   <td>
                     <span className={`badge ${u.role === "EMPLOYEE" ? "bg-slate-100 text-slate-600" : "bg-brand-50 text-brand-700"}`}>
                       {ROLE_INFO[normalizeRole(u.role)].label}
@@ -113,14 +113,24 @@ export default async function MitarbeitendePage() {
 }
 
 function UserStatus({ u, employments }: {
-  u: { anonymizedAt: Date | null; active: boolean; passwordSetAt: Date | null };
+  u: { anonymizedAt: Date | null; active: boolean; passwordSetAt: Date | null; email: string | null };
   employments: EmploymentFull[];
 }) {
-  const exit = lastWorkingDay(employments);
   if (u.anonymizedAt) return <span className="badge bg-slate-100 text-slate-500">anonymisiert</span>;
+  return (
+    <>
+      <AccessBadge u={u} employments={employments} />
+      {employments.length === 0 && <span className="badge ml-1 bg-slate-100 text-slate-500">ohne Arbeitsverhältnis</span>}
+    </>
+  );
+}
+
+function AccessBadge({ u, employments }: { u: { active: boolean; passwordSetAt: Date | null; email: string | null }; employments: EmploymentFull[] }) {
+  const exit = lastWorkingDay(employments);
   if (exit && exit < todayISO()) return <span className="badge bg-slate-100 text-slate-500">ausgetreten {formatDate(exit)}</span>;
   if (exit) return <span className="badge bg-amber-50 text-amber-700">Austritt {formatDate(exit)}</span>;
   if (!u.active) return <span className="badge bg-slate-100 text-slate-500">gesperrt</span>;
+  if (!u.email) return <span className="badge bg-slate-100 text-slate-500">kein Zugang</span>;
   if (!u.passwordSetAt) return <span className="badge bg-amber-50 text-amber-700">eingeladen</span>;
   return null;
 }

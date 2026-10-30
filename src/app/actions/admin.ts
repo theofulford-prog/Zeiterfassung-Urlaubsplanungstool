@@ -1,7 +1,6 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -23,17 +22,19 @@ export async function saveUser(_: FormState, form: FormData): Promise<FormState>
   const actor = await requirePermission("users.manage");
   const id = String(form.get("id") ?? "") || null;
   const name = String(form.get("name") ?? "").trim();
-  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const email = String(form.get("email") ?? "").trim().toLowerCase() || null;
   const role = normalizeRole(String(form.get("role") ?? "EMPLOYEE"));
   const active = form.get("active") !== "off";
   const tracksTime = form.get("tracksTime") !== "off";
+  const accessWithoutEmployment = form.get("accessWithoutEmployment") === "on";
   const password = String(form.get("password") ?? "");
 
   if (!name) return { error: "Bitte einen Namen angeben." };
-  if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Bitte eine gültige E-Mail-Adresse angeben." };
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) return { error: "Bitte eine gültige E-Mail-Adresse angeben." };
   if (password && password.length < 8) return { error: "Das Passwort muss mindestens 8 Zeichen haben." };
+  if (password && !email) return { error: "Für ein Passwort braucht die Person eine E-Mail-Adresse zum Anmelden." };
 
-  const clash = await prisma.user.findUnique({ where: { email } });
+  const clash = email ? await prisma.user.findUnique({ where: { email } }) : null;
   if (clash && clash.id !== id) return { error: "Diese E-Mail-Adresse ist schon vergeben." };
   const existing = id ? await prisma.user.findUnique({ where: { id } }) : null;
   if (id && !existing) return { error: "Person nicht gefunden." };
@@ -54,7 +55,7 @@ export async function saveUser(_: FormState, form: FormData): Promise<FormState>
   }
 
   // Vertragsdaten (Eintritt, Austritt, Wochenstunden, Urlaub, Kostensatz) gehören zum Arbeitsverhältnis – siehe actions/employment.ts.
-  const data = { name, email, role, tracksTime, active };
+  const data = { name, email, role, tracksTime, active, accessWithoutEmployment };
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
   try {
     if (existing) {
@@ -75,7 +76,7 @@ export async function saveUser(_: FormState, form: FormData): Promise<FormState>
         const u = await tx.user.create({
           data: {
             ...data,
-            passwordHash: passwordHash ?? (await bcrypt.hash(randomBytes(32).toString("hex"), 10)),
+            passwordHash: passwordHash ?? null,
             passwordSetAt: passwordHash ? new Date() : null,
             mustChangePassword: !!passwordHash,
           },
@@ -153,8 +154,9 @@ export async function anonymizeUser(_: FormState, form: FormData): Promise<FormS
       where: { id: t.id },
       data: {
         name: label,
-        email: `anonym-${t.id}@geloescht.invalid`,
-        passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 10),
+        email: null,
+        passwordHash: null,
+        accessWithoutEmployment: false,
         role: "EMPLOYEE",
         active: false,
         exitDate: t.exitDate ?? todayISO(),

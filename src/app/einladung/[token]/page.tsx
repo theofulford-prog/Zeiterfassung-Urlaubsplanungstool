@@ -25,7 +25,7 @@ export default async function EinladungPage({ params }: { params: Promise<{ toke
         </div>
         <div className="card p-6">
           {valid ? (
-            <AcceptForm token={token} email={valid.user.email} />
+            <AcceptForm token={token} email={valid.user.email ?? ""} />
           ) : (
             <div className="space-y-4 text-[15px] text-slate-600">
               <p>Dieser Link ist abgelaufen oder wurde bereits verwendet. Bitte die Geschäftsführung, dir einen neuen Link zu schicken.</p>
