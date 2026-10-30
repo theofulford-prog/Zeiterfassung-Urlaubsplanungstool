@@ -106,9 +106,6 @@ export async function saveProject(_: FormState, form: FormData): Promise<FormSta
   const description = String(form.get("description") ?? "").trim() || null;
   const budget = num(form.get("budget"));
   const active = form.get("active") !== "off";
-  const tracksTime = form.get("tracksTime") !== "off";
-  const entryDate = String(form.get("entryDate") ?? "").trim() || null;
-  const exitDate = String(form.get("exitDate") ?? "").trim() || null;
 
   if (!name) return { error: "Bitte einen Projektnamen angeben." };
   if (!category) return { error: "Bitte eine Kategorie angeben." };
@@ -159,14 +156,14 @@ export async function anonymizeUser(_: FormState, form: FormData): Promise<FormS
         accessWithoutEmployment: false,
         role: "EMPLOYEE",
         active: false,
-        exitDate: t.exitDate ?? todayISO(),
-        carryoverDays: 0,
         anonymizedAt: new Date(),
         sessionVersion: { increment: 1 },
       },
     }),
     prisma.authToken.deleteMany({ where: { userId: t.id } }),
     prisma.personalRecord.deleteMany({ where: { userId: t.id } }),
+    // Offene Arbeitsverhältnisse enden spätestens heute
+    prisma.employment.updateMany({ where: { userId: t.id, OR: [{ endDate: null }, { endDate: { gt: todayISO() } }] }, data: { endDate: todayISO() } }),
     prisma.leaveRequest.updateMany({ where: { userId: t.id }, data: { note: null } }),
     prisma.leaveRequest.deleteMany({ where: { userId: t.id, status: "PENDING" } }),
   ]);

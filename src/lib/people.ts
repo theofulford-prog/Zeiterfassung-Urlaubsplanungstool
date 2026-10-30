@@ -19,7 +19,7 @@ export async function loadEmployments(userIds: string[]): Promise<Map<string, Em
 /** Arbeitsverhältnis der jüngsten Buchung – Vorauswahl, wenn eine Person mehrere hat. */
 export async function lastUsedEmploymentId(userId: string): Promise<string | null> {
   const last = await prisma.timeEntry.findFirst({
-    where: { userId, employmentId: { not: null } },
+    where: { userId },
     orderBy: { createdAt: "desc" },
     select: { employmentId: true },
   });

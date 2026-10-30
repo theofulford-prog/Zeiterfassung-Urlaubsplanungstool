@@ -16,20 +16,9 @@ model User {
   passwordHash            String?
   /// "ADMIN" | "GF" | "LEAD" | "EMPLOYEE" – Rechte siehe src/lib/permissions.ts
   role                    String          @default("EMPLOYEE")
-  /// Interner Kostensatz in EUR pro Stunde – nur für die Geschäftsführung sichtbar
-  hourlyCost              Float           @default(0)
-  weeklyHours             Float           @default(40)
   /// false z. B. für Gesellschafter:innen ohne Zeiterfassung – erscheinen dann nicht in Auslastung/Hinweisen
   tracksTime              Boolean         @default(true)
-  vacationDaysPerYear     Int             @default(30)
-  /// Resturlaub aus dem Vorjahr, gilt für carryoverYear
-  carryoverDays           Float           @default(0)
-  carryoverYear           Int?
   active                  Boolean         @default(true)
-  /// Erster Arbeitstag (YYYY-MM-DD); ab hier zählt das Soll. Leer = Anlagedatum
-  entryDate               String?
-  /// Letzter Arbeitstag (YYYY-MM-DD); danach kein Login mehr, kein Soll, nicht mehr in Auswertungen
-  exitDate                String?
   /// Gesetzt, wenn die Person anonymisiert wurde (Name/E-Mail entfernt, Stunden bleiben erhalten)
   anonymizedAt            DateTime?
   /// Wird bei Passwortänderung erhöht und macht alte Sitzungen ungültig
@@ -73,8 +62,8 @@ model TimeEntry {
   note         String?
   /// Kostensatz der Person zum Zeitpunkt der Buchung (EUR/h)
   costRate     Float
-  /// Arbeitsverhältnis, für das gebucht wurde (Pflicht ab Abschluss des Umbaus)
-  employmentId String?
+  /// Arbeitsverhältnis, für das gebucht wurde
+  employmentId String
   createdAt    DateTime    @default(now())
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   project      Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
@@ -118,11 +107,11 @@ model WorkDay {
   /// leer, solange der Arbeitstag noch läuft (Stempeluhr)
   end          String?
   breakMinutes Int         @default(0)
-  /// Arbeitsverhältnis, für das gearbeitet wurde (Pflicht ab Abschluss des Umbaus)
-  employmentId String?
+  /// Arbeitsverhältnis, für das gearbeitet wurde
+  employmentId String
   updatedAt    DateTime    @updatedAt
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employment   Employment? @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  employment   Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
 
   /// Je Arbeitsverhältnis ein Eintrag pro Tag (bei zwei Arbeitgebern zwei Einträge)
   @@unique([employmentId, date])

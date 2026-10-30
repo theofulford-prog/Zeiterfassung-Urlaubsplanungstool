@@ -25,6 +25,11 @@ describe("Soll je Arbeitsverhältnis", () => {
   it("Urlaub senkt das Soll", () => {
     expect(employmentTargetHours(emp(), S, E, [vac("2026-09-07", "2026-09-11")])).toBe(136);
   });
+  it("Urlaub senkt das Soll auch an vertraglichen Samstagen", () => {
+    const saturdays = emp({ terms: [t("2026-01-01", 8, [6])] });
+    expect(employmentTargetHours(saturdays, S, E, [])).toBe(32);
+    expect(employmentTargetHours(saturdays, S, E, [vac("2026-09-12", "2026-09-12")])).toBe(24);
+  });
   it("ohne Wochenstunden kein Soll", () => {
     expect(employmentTargetHours(emp({ terms: [t("2026-01-01", null)] }), S, E, [])).toBeNull();
     expect(personTargetHours([emp({ terms: [t("2026-01-01", null)] }), emp()], S, E, [])).toBe(176);
