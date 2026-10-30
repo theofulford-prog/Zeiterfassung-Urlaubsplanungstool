@@ -8,40 +8,44 @@ datasource db {
 }
 
 model User {
-  id                  String         @id @default(cuid())
-  name                String
-  email               String         @unique
-  passwordHash        String
+  id                      String          @id @default(cuid())
+  name                    String
+  email                   String          @unique
+  passwordHash            String
   /// "ADMIN" | "GF" | "LEAD" | "EMPLOYEE" – Rechte siehe src/lib/permissions.ts
-  role                String         @default("EMPLOYEE")
+  role                    String          @default("EMPLOYEE")
   /// Interner Kostensatz in EUR pro Stunde – nur für die Geschäftsführung sichtbar
-  hourlyCost          Float          @default(0)
-  weeklyHours         Float          @default(40)
+  hourlyCost              Float           @default(0)
+  weeklyHours             Float           @default(40)
   /// false z. B. für Gesellschafter:innen ohne Zeiterfassung – erscheinen dann nicht in Auslastung/Hinweisen
-  tracksTime          Boolean        @default(true)
-  vacationDaysPerYear Int            @default(30)
+  tracksTime              Boolean         @default(true)
+  vacationDaysPerYear     Int             @default(30)
   /// Resturlaub aus dem Vorjahr, gilt für carryoverYear
-  carryoverDays       Float          @default(0)
-  carryoverYear       Int?
-  active              Boolean        @default(true)
+  carryoverDays           Float           @default(0)
+  carryoverYear           Int?
+  active                  Boolean         @default(true)
   /// Erster Arbeitstag (YYYY-MM-DD); ab hier zählt das Soll. Leer = Anlagedatum
-  entryDate           String?
+  entryDate               String?
   /// Letzter Arbeitstag (YYYY-MM-DD); danach kein Login mehr, kein Soll, nicht mehr in Auswertungen
-  exitDate            String?
+  exitDate                String?
   /// Gesetzt, wenn die Person anonymisiert wurde (Name/E-Mail entfernt, Stunden bleiben erhalten)
-  anonymizedAt        DateTime?
+  anonymizedAt            DateTime?
   /// Wird bei Passwortänderung erhöht und macht alte Sitzungen ungültig
-  sessionVersion      Int            @default(0)
+  sessionVersion          Int             @default(0)
   /// Zeitpunkt, an dem die Person ihr Passwort gesetzt hat (null = Einladung noch nicht angenommen)
-  passwordSetAt       DateTime?
+  passwordSetAt           DateTime?
+  /// true = Zugang ohne Arbeitsverhältnis (z. B. Geschäftsführung ohne erfassten Vertrag, externer Admin)
+  accessWithoutEmployment Boolean         @default(false)
   /// Start-/Übergangspasswort: muss beim nächsten Login geändert werden
-  mustChangePassword  Boolean        @default(false)
-  createdAt           DateTime       @default(now())
-  timeEntries         TimeEntry[]
-  workDays            WorkDay[]
-  authTokens          AuthToken[]
-  leaveRequests       LeaveRequest[] @relation("requester")
-  decisions           LeaveRequest[] @relation("decider")
+  mustChangePassword      Boolean         @default(false)
+  createdAt               DateTime        @default(now())
+  timeEntries             TimeEntry[]
+  workDays                WorkDay[]
+  authTokens              AuthToken[]
+  leaveRequests           LeaveRequest[]  @relation("requester")
+  employments             Employment[]
+  personalRecord          PersonalRecord?
+  decisions               LeaveRequest[]  @relation("decider")
 }
 
 model Project {
@@ -58,49 +62,52 @@ model Project {
 }
 
 model TimeEntry {
-  id        String   @id @default(cuid())
-  userId    String
-  projectId String
+  id           String      @id @default(cuid())
+  userId       String
+  projectId    String
   /// Kalendertag im Format YYYY-MM-DD
-  date      String
-  hours     Float
-  note      String?
+  date         String
+  hours        Float
+  note         String?
   /// Kostensatz der Person zum Zeitpunkt der Buchung (EUR/h)
-  costRate  Float
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  costRate     Float
+  /// Arbeitsverhältnis, für das gebucht wurde (Pflicht ab Abschluss des Umbaus)
+  employmentId String?
+  createdAt    DateTime    @default(now())
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  employment   Employment? @relation(fields: [employmentId], references: [id], onDelete: Restrict)
 
   @@index([userId, date])
   @@index([projectId, date])
 }
 
 model LeaveRequest {
-  id           String   @id @default(cuid())
-  userId       String
+  id          String    @id @default(cuid())
+  userId      String
   /// YYYY-MM-DD, jeweils inklusive
-  startDate    String
-  endDate      String
+  startDate   String
+  endDate     String
   /// "VACATION" | "SICK" | "OTHER"
-  type         String   @default("VACATION")
+  type        String    @default("VACATION")
   /// "PENDING" | "APPROVED" | "REJECTED"
-  status       String   @default("PENDING")
+  status      String    @default("PENDING")
   /// Arbeitstage (ohne Wochenenden und Feiertage); 0,5 bei halbem Tag
-  days         Float
-  halfDay      Boolean  @default(false)
-  note         String?
-  decidedById  String?
-  decidedAt    DateTime?
-  createdAt    DateTime @default(now())
-  user         User     @relation("requester", fields: [userId], references: [id], onDelete: Cascade)
-  decidedBy    User?    @relation("decider", fields: [decidedById], references: [id])
+  days        Float
+  halfDay     Boolean   @default(false)
+  note        String?
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation("requester", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy   User?     @relation("decider", fields: [decidedById], references: [id])
 
   @@index([startDate, endDate])
 }
 
 /// Gesetzliche Arbeitszeiterfassung: Beginn, Ende und Pause pro Tag
 model WorkDay {
-  id           String   @id @default(cuid())
+  id           String      @id @default(cuid())
   userId       String
   /// YYYY-MM-DD
   date         String
@@ -108,9 +115,12 @@ model WorkDay {
   start        String
   /// leer, solange der Arbeitstag noch läuft (Stempeluhr)
   end          String?
-  breakMinutes Int      @default(0)
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  breakMinutes Int         @default(0)
+  /// Arbeitsverhältnis, für das gearbeitet wurde (Pflicht ab Abschluss des Umbaus)
+  employmentId String?
+  updatedAt    DateTime    @updatedAt
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employment   Employment? @relation(fields: [employmentId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
 }
@@ -136,4 +146,110 @@ model RolePermission {
   updatedById String?
 
   @@id([role, permission])
+}
+
+/// Gesellschaft der Gruppe – Arbeitgeber und (später) Auftraggeber
+model Company {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  /// Kurzname für Listen, z. B. "DBS Home"
+  shortName   String?
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  employments Employment[]
+}
+
+/// Arbeitsverhältnis einer Person bei genau einer Gesellschaft
+model Employment {
+  id               String            @id @default(cuid())
+  userId           String
+  companyId        String
+  /// "PERMANENT" | "FIXED_TERM" | "MINIJOB" | "WORKING_STUDENT" | "APPRENTICE" | "INTERN" – siehe src/lib/employment.ts
+  contractType     String
+  jobTitle         String?
+  /// Personalnummer je Gesellschaft (für den späteren Lohnexport)
+  personnelNumber  String?
+  /// Eintritt (YYYY-MM-DD)
+  startDate        String
+  /// Letzter Arbeitstag (YYYY-MM-DD)
+  endDate          String?
+  probationEndDate String?
+  fixedTermEndDate String?
+  /// Resturlaub aus dem Vorjahr, gilt für carryoverYear
+  carryoverDays    Float             @default(0)
+  carryoverYear    Int?
+  createdAt        DateTime          @default(now())
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  terms            EmploymentTerms[]
+  timeEntries      TimeEntry[]
+  workDays         WorkDay[]
+
+  @@unique([companyId, personnelNumber])
+  @@index([userId])
+}
+
+/// Vertragskonditionen mit Gültig-ab-Datum – ältere Stände bleiben für Auswertungen der Vergangenheit erhalten
+model EmploymentTerms {
+  id                  String     @id @default(cuid())
+  employmentId        String
+  /// YYYY-MM-DD
+  validFrom           String
+  /// null = kein Soll (z. B. Minijob oder Stundenlohn ohne feste Stunden)
+  weeklyHours         Float?
+  /// Arbeitstage als ISO-Wochentage, Mo = 1 … So = 7
+  workDays            Int[]
+  vacationDaysPerYear Float
+  /// "MONTHLY" | "HOURLY"
+  payType             String
+  /// Monatsgehalt bzw. Stundenlohn brutto in EUR
+  payAmount           Float?
+  /// Interner Kostensatz EUR/h für Projektkosten
+  costRate            Float      @default(0)
+  createdAt           DateTime   @default(now())
+  createdById         String?
+  employment          Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+
+  @@unique([employmentId, validFrom])
+}
+
+/// Personalakte. Steuer-ID, SV-Nummer und IBAN nur verschlüsselt (src/lib/crypto.ts).
+model PersonalRecord {
+  userId            String   @id
+  birthDate         String?
+  street            String?
+  postalCode        String?
+  city              String?
+  phone             String?
+  privateEmail      String?
+  emergencyName     String?
+  emergencyPhone    String?
+  emergencyRelation String?
+  healthInsurance   String?
+  taxIdEnc          String?
+  socialSecurityEnc String?
+  ibanEnc           String?
+  accountHolder     String?
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Änderungsprotokoll. Bewusst ohne Fremdschlüssel, damit Einträge unabhängig von den Datensätzen bestehen.
+model AuditLog {
+  id            String   @id @default(cuid())
+  at            DateTime @default(now())
+  /// null = System
+  actorId       String?
+  /// z. B. "terms.create" – siehe src/lib/audit.ts
+  action        String
+  entityType    String
+  entityId      String
+  /// Person, die der Eintrag betrifft
+  subjectUserId String?
+  /// { feld: { from, to } } bzw. { feld: { changed: true } } bei sensiblen Feldern
+  changes       Json?
+  reason        String?
+
+  @@index([subjectUserId, at])
+  @@index([entityType, entityId])
 }
