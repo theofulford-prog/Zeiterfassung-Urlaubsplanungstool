@@ -7,7 +7,7 @@ export type AuditAction =
   | "person.create" | "person.update"
   | "company.create" | "company.update"
   | "employment.create" | "employment.update"
-  | "terms.create" | "terms.delete"
+  | "terms.create" | "terms.update" | "terms.delete"
   | "personal.update" | "personal.read";
 
 /** Schreibt einen Eintrag ins Änderungsprotokoll – innerhalb einer Transaktion, wenn `tx` übergeben wird. */

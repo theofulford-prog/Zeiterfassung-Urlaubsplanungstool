@@ -76,6 +76,19 @@ export function employmentTargetHours(emp: EmploymentLike, from: string, to: str
   return round2(sum);
 }
 
+/**
+ * Abwesenheitstage einer Person im Zeitraum: Tage, die für mindestens ein bestehendes Arbeitsverhältnis
+ * ein vertraglicher Arbeitstag sind (jeder Tag zählt einmal, halber Tag = 0,5).
+ */
+export function personLeaveDaysIn(emps: EmploymentLike[], l: LeaveLike, from: string, to: string): number {
+  const r = clip(l, from, to);
+  if (!r) return 0;
+  const days = daysInRange(r[0], r[1]).filter((d) =>
+    emps.some((e) => clipToEmployment(e, d, d) && isWorkdayFor(d, termsOn(e.terms, d)?.workDays ?? [])),
+  );
+  return days.length * weight(l);
+}
+
 /** Soll einer Person über alle Arbeitsverhältnisse; null, wenn keines ein Soll hat. */
 export function personTargetHours(emps: EmploymentLike[], from: string, to: string, leaves: LeaveLike[]): number | null {
   const values = emps.map((e) => employmentTargetHours(e, from, to, leaves)).filter((v): v is number => v !== null);

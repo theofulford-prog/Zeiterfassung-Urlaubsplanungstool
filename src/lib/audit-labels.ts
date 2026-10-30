@@ -8,6 +8,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "employment.create": "Arbeitsverhältnis angelegt",
   "employment.update": "Arbeitsverhältnis geändert",
   "terms.create": "Neue Konditionen",
+  "terms.update": "Konditionen geändert",
   "terms.delete": "Konditionen entfernt",
   "personal.update": "Personalakte geändert",
   "personal.read": "Lohndaten angesehen",

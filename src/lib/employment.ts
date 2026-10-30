@@ -59,3 +59,24 @@ export function formatWorkDays(days: readonly number[]): string {
   if (contiguous && sorted.length > 2) return `${WEEKDAYS[sorted[0] - 1]}–${WEEKDAYS[sorted[sorted.length - 1] - 1]}`;
   return sorted.map((d) => WEEKDAYS[d - 1]).join(", ");
 }
+
+/**
+ * Automatisch sperren (täglicher Lauf bzw. beim Beenden): nur wer Arbeitsverhältnisse hatte und keines mehr besteht.
+ * Neu angelegte Personen ohne Arbeitsverhältnis bleiben aktiv, bis Personal es anlegt – anmelden können sie sich trotzdem nicht.
+ */
+export function shouldAutoDeactivate(user: { accessWithoutEmployment: boolean }, emps: readonly Span[], date: string): boolean {
+  return !user.accessWithoutEmployment && emps.length > 0 && !hasAccessOn(user, emps, date);
+}
+
+/**
+ * Wird der Eintritt verschoben, ziehen die ersten Konditionen mit – solange keine späteren Konditionen davor lägen.
+ * Ergebnis: neues Gültig-ab der ersten Konditionen, nichts zu tun ({}) oder eine Meldung.
+ */
+export function firstTermsStartAfter(newStart: string, validFroms: readonly string[]): { shiftTo?: string; error?: string } {
+  const sorted = [...validFroms].sort();
+  if (sorted.length === 0 || sorted[0] === newStart) return {};
+  if (sorted.length > 1 && sorted[1] <= newStart) {
+    return { error: "Es gibt Konditionen vor dem neuen Eintrittsdatum. Bitte zuerst die Konditionen anpassen." };
+  }
+  return { shiftTo: newStart };
+}

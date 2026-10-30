@@ -6,7 +6,7 @@ import {
   addDays, addMonths, daysInRange, isWorkday, isWorkdayFor, formatDateShort, isValidISO, monthEnd, monthLabel, monthLabelShort, monthStart, startOfWeek, todayISO,
 } from "@/lib/dates";
 import { formatEUR, formatHours, formatNum, formatPct, LEAVE_TYPES } from "@/lib/format";
-import { leaveWorkdaysIn, personTargetHours } from "@/lib/stats";
+import { personLeaveDaysIn, personTargetHours } from "@/lib/stats";
 import { activeEmploymentsOn } from "@/lib/employment";
 import { loadEmployments } from "@/lib/people";
 import { termsOn } from "@/lib/terms";
@@ -96,7 +96,7 @@ export default async function UebersichtPage({ searchParams }: { searchParams: P
     const istBis = mine.filter((e) => e.date <= targetEnd).reduce((s, e) => s + e.hours, 0);
     const myLeaves = leaves.filter((l) => l.userId === u.id);
     const soll = personTargetHours(empsOf(u.id), start, targetEnd, myLeaves) ?? 0;
-    const absentDays = myLeaves.reduce((s, l) => s + leaveWorkdaysIn(l, start, end), 0);
+    const absentDays = myLeaves.reduce((s, l) => s + personLeaveDaysIn(empsOf(u.id), l, start, end), 0);
     const perProject = new Map<string, number>();
     for (const e of mine) perProject.set(e.project.name, (perProject.get(e.project.name) ?? 0) + e.hours);
     const top = [...perProject.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);

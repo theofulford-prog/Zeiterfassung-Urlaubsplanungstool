@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  employmentTargetHours, employmentVacationAllowance, employmentVacationBalance, personTargetHours, type EmploymentLike,
+  employmentTargetHours, employmentVacationAllowance, employmentVacationBalance, personLeaveDaysIn, personTargetHours, type EmploymentLike,
 } from "./stats";
 
 const t = (validFrom: string, weeklyHours: number | null, workDays = [1, 2, 3, 4, 5], vacationDaysPerYear = 30) =>
@@ -54,5 +54,20 @@ describe("Urlaub je Arbeitsverhältnis", () => {
     const e = emp({ carryoverDays: 3, carryoverYear: 2026 });
     expect(employmentVacationBalance(e, 2026, []).total).toBe(33);
     expect(employmentVacationBalance(e, 2027, []).total).toBe(30);
+  });
+});
+
+describe("Abwesenheitstage der Person nach Vertrag", () => {
+  it("zählt nur vertragliche Arbeitstage", () => {
+    const moDo = emp({ terms: [t("2026-01-01", 32, [1, 2, 3, 4])] });
+    expect(personLeaveDaysIn([moDo], vac("2026-09-07", "2026-09-11"), S, E)).toBe(4);
+  });
+  it("bei zwei Arbeitsverhältnissen zählt jeder Tag einmal", () => {
+    const moDo = emp({ id: "x", terms: [t("2026-01-01", 16, [1, 2, 3, 4])] });
+    expect(personLeaveDaysIn([emp(), moDo], vac("2026-09-07", "2026-09-11"), S, E)).toBe(5);
+  });
+  it("halbe Tage und Zeitraum-Grenzen", () => {
+    expect(personLeaveDaysIn([emp()], { ...vac("2026-09-07", "2026-09-07"), halfDay: true }, S, E)).toBe(0.5);
+    expect(personLeaveDaysIn([emp()], vac("2026-08-31", "2026-09-04"), S, E)).toBe(4);
   });
 });

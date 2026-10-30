@@ -5,7 +5,7 @@ import { can, canManageUser, ROLE_INFO, normalizeRole } from "@/lib/permissions"
 import { prisma } from "@/lib/db";
 import { addMonths, isWorkday, monthEnd, monthLabel, monthLabelShort, todayISO } from "@/lib/dates";
 import { formatEUR, formatNum } from "@/lib/format";
-import { employmentTargetHours, employmentVacationBalance, leaveWorkdaysIn, personTargetHours } from "@/lib/stats";
+import { employmentTargetHours, employmentVacationBalance, personLeaveDaysIn, personTargetHours } from "@/lib/stats";
 import { activeEmploymentsOn, lastWorkingDay } from "@/lib/employment";
 import { companyLabel, loadEmployments } from "@/lib/people";
 import { termsOn } from "@/lib/terms";
@@ -74,7 +74,7 @@ export default async function PersonPage({
     const soll = m <= today ? personTargetHours(employments, m, capped(mEnd), leaves) ?? 0 : 0;
     const counted = m <= today;
     if (counted) saldo += ist - soll;
-    const days = (type: string) => leaves.filter((l) => l.type === type && l.status === "APPROVED").reduce((s, l) => s + leaveWorkdaysIn(l, m, mEnd), 0);
+    const days = (type: string) => leaves.filter((l) => l.type === type && l.status === "APPROVED").reduce((s, l) => s + personLeaveDaysIn(employments, l, m, mEnd), 0);
     return {
       m, ist, soll, counted, saldo,
       vacation: days("VACATION"), sick: days("SICK"),
@@ -295,7 +295,13 @@ export default async function PersonPage({
       {showAudit && (
         <section className="card mb-6">
           <h2 className="px-4 pt-4 pb-2 font-semibold md:px-5">Protokoll</h2>
-          <AuditList entries={auditEntries} actors={actors} names={new Map(companies.map((c) => [c.id, c.name]))} empty="Noch keine Einträge." />
+          <AuditList
+            entries={auditEntries}
+            actors={actors}
+            names={new Map(companies.map((c) => [c.id, c.name]))}
+            viewer={{ showCosts: showCosts || showPersonnel, showPay: showCosts || showPersonnel }}
+            empty="Noch keine Einträge."
+          />
         </section>
       )}
 

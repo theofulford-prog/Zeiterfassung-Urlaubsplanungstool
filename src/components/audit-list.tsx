@@ -1,6 +1,8 @@
 import type { AuditLog } from "@prisma/client";
 import type { AuditAction } from "@/lib/audit";
 import { AUDIT_ACTION_LABELS, FIELD_LABELS } from "@/lib/audit-labels";
+import type { Changes } from "@/lib/audit-diff";
+import { visibleChanges } from "@/lib/audit-view";
 import { formatDate, isValidISO } from "@/lib/dates";
 import { CONTRACT_TYPES, formatWorkDays } from "@/lib/employment";
 import { normalizeRole, ROLE_INFO } from "@/lib/permissions";
@@ -25,17 +27,19 @@ function show(field: string, v: unknown, names: Map<string, string>): string {
 }
 
 /** Einträge des Änderungsprotokolls. Sensible Felder erscheinen nur als „geändert“. */
-export function AuditList({ entries, actors, empty, names = new Map() }: {
+export function AuditList({ entries, actors, empty, viewer, names = new Map() }: {
   entries: AuditLog[];
   actors: Map<string, string>;
   empty: string;
+  /** Was der Betrachter sehen darf – Kostensatz bzw. Vergütung sonst nur als „geändert“ */
+  viewer: { showCosts: boolean; showPay: boolean };
   /** Namen zu IDs in den Werten, z. B. Gesellschaften */
   names?: Map<string, string>;
 }) {
   return (
     <ul className="divide-y divide-slate-100 text-[14px]">
       {entries.map((e) => {
-        const changes = Object.entries((e.changes ?? {}) as Record<string, { from?: unknown; to?: unknown; changed?: true }>);
+        const changes = Object.entries(visibleChanges((e.changes ?? {}) as Changes, viewer) as Record<string, { from?: unknown; to?: unknown; changed?: true }>);
         return (
           <li key={e.id} className="px-4 py-3 md:px-5">
             <p>

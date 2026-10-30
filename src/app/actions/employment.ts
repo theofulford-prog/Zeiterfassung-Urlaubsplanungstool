@@ -6,7 +6,7 @@ import { requirePermission } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { diffChanges } from "@/lib/audit-diff";
 import { addDays, isValidISO } from "@/lib/dates";
-import { CONTRACT_TYPES } from "@/lib/employment";
+import { CONTRACT_TYPES, firstTermsStartAfter } from "@/lib/employment";
 import { endAccessIfNoEmployment } from "@/lib/exits";
 import { parseTermsForm } from "@/lib/terms-form";
 import type { FormState } from "./auth";
@@ -81,12 +81,19 @@ export async function saveEmployment(_: FormState, form: FormData): Promise<Form
 
   try {
     if (existing) {
-      const firstTerms = await prisma.employmentTerms.findFirst({ where: { employmentId: existing.id }, orderBy: { validFrom: "asc" } });
-      if (firstTerms && firstTerms.validFrom < input.startDate) {
-        return { error: "Es gibt Konditionen vor dem neuen Eintrittsdatum. Bitte zuerst die Konditionen anpassen." };
-      }
+      // Die ersten Konditionen gelten immer ab Eintritt – sie ziehen mit, wenn der Eintritt verschoben wird.
+      const terms = await prisma.employmentTerms.findMany({ where: { employmentId: existing.id }, orderBy: { validFrom: "asc" } });
+      const shift = firstTermsStartAfter(input.startDate, terms.map((t) => t.validFrom));
+      if (shift.error) return { error: shift.error };
       await prisma.$transaction(async (tx) => {
         await tx.employment.update({ where: { id: existing.id }, data: input });
+        if (shift.shiftTo) {
+          await tx.employmentTerms.update({ where: { id: terms[0].id }, data: { validFrom: shift.shiftTo } });
+          await audit({
+            actorId: actor.id, action: "terms.update", entityType: "EmploymentTerms", entityId: terms[0].id,
+            subjectUserId: userId, changes: { validFrom: { from: terms[0].validFrom, to: shift.shiftTo } },
+          }, tx);
+        }
         await audit({
           actorId: actor.id, action: "employment.update", entityType: "Employment", entityId: existing.id,
           subjectUserId: userId, changes: diffChanges(existing, input),

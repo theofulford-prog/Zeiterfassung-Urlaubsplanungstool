@@ -58,7 +58,14 @@ export default async function ProfilPage() {
 
         <section className="card">
           <h2 className="px-4 pt-4 pb-2 font-semibold md:px-5">Wer hat meine Daten geändert oder angesehen</h2>
-          <AuditList entries={entries} actors={actors} names={new Map(companies.map((c) => [c.id, c.name]))} empty="Noch keine Einträge." />
+          {/* Eigenes Gehalt ja, interner Kostensatz nein */}
+          <AuditList
+            entries={entries}
+            actors={actors}
+            names={new Map(companies.map((c) => [c.id, c.name]))}
+            viewer={{ showCosts: false, showPay: true }}
+            empty="Noch keine Einträge."
+          />
         </section>
       </div>
     </>

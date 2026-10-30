@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "./db";
 import { todayISO } from "./dates";
-import { hasAccessOn } from "./employment";
+import { shouldAutoDeactivate } from "./employment";
 
 const TTL_MS = 10 * 60 * 1000;
 const state = globalThis as unknown as { __exitsSyncedAt?: number; __exitsDay?: string };
@@ -13,12 +13,12 @@ const state = globalThis as unknown as { __exitsSyncedAt?: number; __exitsDay?: 
 export async function syncExits(force = false) {
   const today = todayISO();
   if (!force && state.__exitsDay === today && state.__exitsSyncedAt && Date.now() - state.__exitsSyncedAt < TTL_MS) return;
-  // Kein Zugang mehr: weder ein nicht beendetes Arbeitsverhältnis noch das Kennzeichen „Zugang ohne Arbeitsverhältnis“
+  // Kein Zugang mehr: alle Arbeitsverhältnisse beendet (wer noch keines hat, bleibt aktiv – anmelden geht trotzdem nicht)
   const candidates = await prisma.user.findMany({
     where: { active: true, accessWithoutEmployment: false },
     select: { id: true, accessWithoutEmployment: true, employments: { select: { id: true, startDate: true, endDate: true } } },
   });
-  const exited = candidates.filter((u) => !hasAccessOn(u, u.employments, today));
+  const exited = candidates.filter((u) => shouldAutoDeactivate(u, u.employments, today));
   if (exited.length) {
     const ids = exited.map((u) => u.id);
     await prisma.$transaction([
@@ -46,7 +46,7 @@ export async function endAccessIfNoEmployment(userId: string) {
   if (ends.length && ends.every((d): d is string => !!d)) {
     await dropLeavesAfterExit(userId, [...ends].sort()[ends.length - 1]);
   }
-  if (user.active && !hasAccessOn(user, user.employments, todayISO())) {
+  if (user.active && shouldAutoDeactivate(user, user.employments, todayISO())) {
     await prisma.$transaction([
       prisma.user.update({ where: { id: userId }, data: { active: false, sessionVersion: { increment: 1 } } }),
       prisma.authToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } }),
